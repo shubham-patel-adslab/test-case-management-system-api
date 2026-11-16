@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { checkDatabaseConnection } from '../../app/database.js';
-import { openApiRegistry } from '../../app/openapi.js';
+import { jsonContent, openApiRegistry } from '../../app/openapi.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { errorResponseSchema } from '../../shared/response/error.response.dto.js';
 import { healthResponseSchema, type HealthResponseDto } from './health.response.dto.js';
@@ -27,13 +27,7 @@ openApiRegistry.registerPath({
     summary: 'Health check',
     description: 'Reports whether the API is running and can reach the database.',
     responses: {
-        200: {
-            description: 'API and database are up',
-            content: { 'application/json': { schema: healthResponseSchema } },
-        },
-        503: {
-            description: 'Database is unreachable',
-            content: { 'application/json': { schema: errorResponseSchema } },
-        },
+        200: { description: 'API and database are up', content: jsonContent(healthResponseSchema) },
+        503: { description: 'Database is unreachable', content: jsonContent(errorResponseSchema) },
     },
 });

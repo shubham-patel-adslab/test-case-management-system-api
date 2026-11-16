@@ -2,6 +2,7 @@ import type { ErrorDetailDto } from '../response/error.response.dto.js';
 
 export const ERROR_CODE = {
     BAD_REQUEST: 'BAD_REQUEST',
+    VALIDATION_ERROR: 'VALIDATION_ERROR',
     NOT_FOUND: 'NOT_FOUND',
     PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
     INTERNAL_ERROR: 'INTERNAL_ERROR',
