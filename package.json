@@ -3,7 +3,14 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js --schema tcms --migrations-dir migrations",
+    "migrate:create": "npm run migrate -- create --migration-file-language sql",
+    "migrate:up": "npm run migrate -- up",
+    "migrate:down": "npm run migrate -- down"
   },
   "keywords": [],
   "author": "",
