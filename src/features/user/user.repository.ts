@@ -37,7 +37,7 @@ export type UserFields = {
 
 export type UserListFilter = {
     search: string | undefined;
-    status: UserStatus | undefined;
+    statuses: UserStatus[] | undefined;
 };
 
 export const USER_EMAIL_UNIQUE_CONSTRAINT = 'uq_users_email';
@@ -53,7 +53,7 @@ const USER_SELECT = `
 
 // NULL parameter = filter not applied. One static statement instead of SQL assembled from strings.
 const USER_LIST_WHERE = `
-     WHERE ($1::text IS NULL OR u.status = $1)
+     WHERE ($1::text[] IS NULL OR u.status = ANY($1))
        AND ($2::text IS NULL
             OR concat_ws(' ', u.first_name, u.last_name) ILIKE $2
             OR u.email ILIKE $2)`;
@@ -78,7 +78,7 @@ export const userRepository = {
              ${USER_LIST_WHERE}
              ORDER BY u.created_at DESC, u.id DESC
              LIMIT $3 OFFSET $4`,
-            [filter.status ?? null, toContainsPattern(filter.search), limit, offset],
+            [filter.statuses ?? null, toContainsPattern(filter.search), limit, offset],
         );
 
         return result.rows;
@@ -87,7 +87,7 @@ export const userRepository = {
     async count(filter: UserListFilter): Promise<number> {
         const result = await pool.query<{ total: number }>(
             `SELECT COUNT(*)::int AS total FROM (${USER_SELECT} ${USER_LIST_WHERE}) AS matching_users`,
-            [filter.status ?? null, toContainsPattern(filter.search)],
+            [filter.statuses ?? null, toContainsPattern(filter.search)],
         );
 
         return result.rows[0]?.total ?? 0;

@@ -4,6 +4,8 @@
 export const RESOURCE_CODE = {
     USER: 'USER',
     PROJECT: 'PROJECT',
+    // Scope, not a thing: acting on every project rather than only those the user is a member of.
+    ALL_PROJECTS: 'ALL_PROJECTS',
 } as const;
 
 export const PERMISSION_CODE = {

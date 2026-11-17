@@ -2,9 +2,11 @@ import type { Request, Response } from 'express';
 
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { parseRequest } from '../../shared/request/parse-request.js';
+import { getAuthUser } from '../authentication/authentication.middleware.js';
 import {
     projectCreateRequestSchema,
     projectIdParamsSchema,
+    projectMemberCandidatePageRequestSchema,
     projectPageRequestSchema,
     projectUpdateRequestSchema,
 } from './project.request.dto.js';
@@ -15,18 +17,18 @@ export const projectController = {
     async getPage(req: Request, res: Response): Promise<void> {
         const request = parseRequest(projectPageRequestSchema, req.query);
 
-        res.json(await projectService.getPage(request));
+        res.json(await projectService.getPage(getAuthUser(req), request));
     },
 
     async getById(req: Request, res: Response): Promise<void> {
         const { projectId } = parseRequest(projectIdParamsSchema, req.params);
 
-        res.json(await projectService.getById(projectId));
+        res.json(await projectService.getById(getAuthUser(req), projectId));
     },
 
     async create(req: Request, res: Response): Promise<void> {
         const request = parseRequest(projectCreateRequestSchema, req.body);
-        const project = await projectService.create(request);
+        const project = await projectService.create(getAuthUser(req), request);
 
         res.status(201).location(`${req.baseUrl}/${project.id}`).json(project);
     },
@@ -41,6 +43,19 @@ export const projectController = {
             });
         }
 
-        res.json(await projectService.update(projectId, request));
+        res.json(await projectService.update(getAuthUser(req), projectId, request));
+    },
+
+    async delete(req: Request, res: Response): Promise<void> {
+        const { projectId } = parseRequest(projectIdParamsSchema, req.params);
+
+        await projectService.delete(getAuthUser(req), projectId);
+        res.status(204).end();
+    },
+
+    async getMemberCandidatePage(req: Request, res: Response): Promise<void> {
+        const request = parseRequest(projectMemberCandidatePageRequestSchema, req.query);
+
+        res.json(await projectService.getMemberCandidatePage(request));
     },
 };

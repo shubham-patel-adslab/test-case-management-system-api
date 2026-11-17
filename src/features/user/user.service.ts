@@ -69,7 +69,7 @@ async function getUserDetails(userId: string, db?: Queryable): Promise<UserDetai
 
 export const userService = {
     async getPage(request: UserPageRequestDto): Promise<UserPageResponseDto> {
-        const filter = { search: request.search, status: request.status };
+        const filter = { search: request.search, statuses: request.status ? [request.status] : undefined };
         const offset = (request.page - 1) * request.pageSize;
 
         const [rows, totalItems] = await Promise.all([

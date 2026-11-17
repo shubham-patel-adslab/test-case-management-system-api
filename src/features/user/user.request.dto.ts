@@ -9,12 +9,10 @@ import {
     ROLE_CODE_PATTERN,
     USER_EMAIL_MAX_LENGTH,
     USER_NAME_MAX_LENGTH,
+    USER_SEARCH_MAX_LENGTH,
     USER_SETTABLE_STATUSES,
     USER_STATUS,
 } from './user.constant.js';
-
-// Search input on the user list; long enough for a full name or an email.
-const USER_SEARCH_MAX_LENGTH = 100;
 
 // Trimmed and lowercased before the format check, so " Ana@Example.com" is stored and logs in as
 // "ana@example.com". (z.email().trim() would validate first and reject the surrounding spaces.) The docs

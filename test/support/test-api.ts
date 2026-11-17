@@ -141,8 +141,8 @@ export async function deleteTestUsers(): Promise<void> {
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`%@${TEST_EMAIL_DOMAIN}`]);
 }
 
-export function testProjectBody(label: string) {
-    return { name: `${TEST_PROJECT_NAME_PREFIX}${label}-${randomUUID().slice(0, 8)}`, description: '', version: '1.0', status: 'ACTIVE' };
+export function testProjectBody(label: string, memberIds: string[] = []) {
+    return { name: `${TEST_PROJECT_NAME_PREFIX}${label}-${randomUUID().slice(0, 8)}`, description: '', version: '1.0', status: 'ACTIVE', memberIds };
 }
 
 export async function countProjectsByName(name: string): Promise<number> {

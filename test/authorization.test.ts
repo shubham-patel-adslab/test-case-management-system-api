@@ -75,18 +75,19 @@ function userEndpoints(newUserEmail: string) {
 
 describe('GET /authorization/me — role and permissions from the database', () => {
     // The UI's can(resource, permission) reads this map; it must match the seeded grants exactly.
-    it('ADMIN gets every USER and PROJECT permission', async () => {
+    it('ADMIN gets every USER and PROJECT permission, and ALL_PROJECTS (no membership needed)', async () => {
         const context = expectBody(await request('GET', '/authorization/me', { token: admin.token }), 200, authorizationContextResponseSchema.strict());
 
         expect(context.role).toEqual({ code: 'ADMIN', name: 'Admin' });
         expect(context.permissions).toEqual({
+            ALL_PROJECTS: ['DELETE', 'READ', 'UPDATE'],
             PROJECT: PROJECT_PERMISSIONS_BY_ROLE.ADMIN,
             USER: ['CREATE', 'DELETE', 'READ', 'UPDATE'],
         });
     });
 
     for (const roleCode of NON_ADMIN_ROLES) {
-        it(`${roleCode} gets its PROJECT permissions and no USER permission (least privilege)`, async () => {
+        it(`${roleCode} gets its PROJECT permissions, no ALL_PROJECTS and no USER permission (least privilege)`, async () => {
             const user = await createTestUser(roleCode);
             const context = expectBody(await request('GET', '/authorization/me', { token: user.token }), 200, authorizationContextResponseSchema);
 
@@ -124,17 +125,19 @@ describe('Role × endpoint matrix', () => {
 });
 
 describe('Project permissions', () => {
-    // Every role reads projects; only ADMIN and TEST_LEAD create and update them — enforced by the API, not
-    // just hidden in the UI.
+    // Every role reads projects; only ADMIN and TEST_LEAD create and update them; only ADMIN deletes —
+    // enforced by the API, not just hidden in the UI. The caller is a member of the project, so membership
+    // isn't what decides here (project.test.ts covers membership).
     for (const roleCode of Object.keys(PROJECT_PERMISSIONS_BY_ROLE) as (keyof typeof PROJECT_PERMISSIONS_BY_ROLE)[]) {
         const permissions: readonly string[] = PROJECT_PERMISSIONS_BY_ROLE[roleCode];
         const canCreate = permissions.includes('CREATE');
         const canUpdate = permissions.includes('UPDATE');
+        const canDelete = permissions.includes('DELETE');
 
-        it(`${roleCode} ${canCreate ? 'reads, creates and updates' : 'only reads'} projects`, async () => {
+        it(`${roleCode} ${canCreate ? 'reads, creates and updates' : 'only reads'} projects${canDelete ? ', and deletes them' : ''}`, async () => {
             const caller = await createTestUser(roleCode);
             const existing = expectBody(
-                await request('POST', '/projects', { token: admin.token, body: testProjectBody('existing') }),
+                await request('POST', '/projects', { token: admin.token, body: testProjectBody('existing', [caller.id]) }),
                 201,
                 projectDetailsResponseSchema,
             );
@@ -146,7 +149,7 @@ describe('Project permissions', () => {
             const create = await request('POST', '/projects', { token: caller.token, body: createBody });
             const update = await request('PUT', `/projects/${existing.id}`, {
                 token: caller.token,
-                body: { ...testProjectBody('updated'), id: existing.id },
+                body: { ...testProjectBody('updated', [caller.id]), id: existing.id },
             });
 
             if (canCreate) {
@@ -161,6 +164,15 @@ describe('Project permissions', () => {
             } else {
                 expectError(update, 403, 'FORBIDDEN');
                 expect(await countProjectsByName(existing.name)).toBe(1);
+            }
+
+            const remove = await request('DELETE', `/projects/${existing.id}`, { token: caller.token });
+
+            if (canDelete) {
+                expect(remove.status).toBe(204);
+            } else {
+                expectError(remove, 403, 'FORBIDDEN');
+                expectBody(await request('GET', `/projects/${existing.id}`, { token: admin.token }), 200, projectDetailsResponseSchema);
             }
         });
     }

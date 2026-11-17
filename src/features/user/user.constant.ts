@@ -16,6 +16,8 @@ export const USER_SETTABLE_STATUSES = [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE]
 export type UserSettableStatus = (typeof USER_SETTABLE_STATUSES)[number];
 
 export const USER_NAME_MAX_LENGTH = 100;
+// Search input on user lists (users, project member candidates); long enough for a full name or an email.
+export const USER_SEARCH_MAX_LENGTH = 100;
 // The longest address SMTP allows (RFC 5321).
 export const USER_EMAIL_MAX_LENGTH = 254;
 // Same shape and limit as roles_std.role_code; whether the role exists is checked against the table.
