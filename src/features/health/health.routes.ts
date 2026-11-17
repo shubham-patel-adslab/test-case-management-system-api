@@ -26,6 +26,7 @@ openApiRegistry.registerPath({
     tags: ['Health'],
     summary: 'Health check',
     description: 'Reports whether the API is running and can reach the database.',
+    security: [],
     responses: {
         200: { description: 'API and database are up', content: jsonContent(healthResponseSchema) },
         503: { description: 'Database is unreachable', content: jsonContent(errorResponseSchema) },

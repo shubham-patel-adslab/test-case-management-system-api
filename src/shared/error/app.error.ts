@@ -3,8 +3,16 @@ import type { ErrorDetailDto } from '../response/error.response.dto.js';
 export const ERROR_CODE = {
     BAD_REQUEST: 'BAD_REQUEST',
     VALIDATION_ERROR: 'VALIDATION_ERROR',
+    // 401 on sign-in only: lets the UI tell "wrong password" apart from an expired session (UNAUTHORIZED).
+    INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+    UNAUTHORIZED: 'UNAUTHORIZED',
+    FORBIDDEN: 'FORBIDDEN',
+    // 403 on sign-in with the right password for a deactivated account.
+    ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
     NOT_FOUND: 'NOT_FOUND',
+    CONFLICT: 'CONFLICT',
     PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+    TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
     INTERNAL_ERROR: 'INTERNAL_ERROR',
     SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
 } as const;

@@ -1,7 +1,6 @@
 import { Router } from 'express';
 
-import { jsonContent, openApiRegistry } from '../../app/openapi.js';
-import { errorResponseSchema } from '../../shared/response/error.response.dto.js';
+import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
 import { projectController } from './project.controller.js';
 import {
     projectCreateRequestSchema,
@@ -11,6 +10,10 @@ import {
 } from './project.request.dto.js';
 import { projectDetailsResponseSchema, projectPageResponseSchema } from './project.response.dto.js';
 
+// Authentication is applied to the whole router in api.router.ts. KNOWN GAP (decided 2026-11-17): no
+// permission check yet — every authenticated user can create and update projects until the PROJECT resource
+// and its role mappings are seeded and these routes use authorize(...). PRD Features §2 allows only admin
+// and test-lead.
 export const projectRouter = Router();
 
 projectRouter.get('/', projectController.getPage);
@@ -20,8 +23,9 @@ projectRouter.put('/:projectId', projectController.update);
 
 const TAGS = ['Projects'];
 
-const validationErrorResponse = { description: 'Invalid request', content: jsonContent(errorResponseSchema) };
-const notFoundResponse = { description: 'Project not found', content: jsonContent(errorResponseSchema) };
+const validationErrorResponse = errorResponse('Invalid request');
+const unauthorizedResponse = errorResponse('Missing, invalid or expired access-token cookie, or inactive account');
+const notFoundResponse = errorResponse('Project not found');
 
 openApiRegistry.registerPath({
     method: 'get',
@@ -32,6 +36,7 @@ openApiRegistry.registerPath({
     responses: {
         200: { description: 'A page of projects', content: jsonContent(projectPageResponseSchema) },
         400: validationErrorResponse,
+        401: unauthorizedResponse,
     },
 });
 
@@ -44,6 +49,7 @@ openApiRegistry.registerPath({
     responses: {
         201: { description: 'Created project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
+        401: unauthorizedResponse,
     },
 });
 
@@ -56,6 +62,7 @@ openApiRegistry.registerPath({
     responses: {
         200: { description: 'The project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
+        401: unauthorizedResponse,
         404: notFoundResponse,
     },
 });
@@ -73,6 +80,7 @@ openApiRegistry.registerPath({
     responses: {
         200: { description: 'Updated project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
+        401: unauthorizedResponse,
         404: notFoundResponse,
     },
 });
