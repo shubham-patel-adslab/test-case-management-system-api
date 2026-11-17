@@ -1,5 +1,6 @@
-import { pool, type Queryable } from '../../app/database.js';
-import { USER_STATUS, type UserSettableStatus, type UserStatus } from './user.constant.js';
+import { pool, toContainsPattern, toOrderBy, type Queryable } from '../../app/database.js';
+import { USER_STATUS, type UserSettableStatus, type UserSortField, type UserStatus } from './user.constant.js';
+import type { UserSort } from './user.request.dto.js';
 
 // A user with their role, exactly as `pg` returns it. Deliberately has no password_hash: this is the row
 // that becomes a response (user.mapper.ts), so the hash can't leak through it.
@@ -58,10 +59,12 @@ const USER_LIST_WHERE = `
             OR concat_ws(' ', u.first_name, u.last_name) ILIKE $2
             OR u.email ILIKE $2)`;
 
-// `%` and `_` typed by the user are literal characters, not wildcards.
-function toContainsPattern(search: string | undefined): string | null {
-    return search === undefined ? null : `%${search.replace(/[\\%_]/g, '\\$&')}%`;
-}
+// By the name as shown ("first last"), case-insensitively.
+const SORT_EXPRESSIONS: Record<UserSortField, string> = {
+    name: "lower(concat_ws(' ', u.first_name, u.last_name))",
+    email: 'u.email',
+    createdAt: 'u.created_at',
+};
 
 // `db` defaults to the pool; pass the transaction's client to run inside withTransaction().
 export const userRepository = {
@@ -71,12 +74,11 @@ export const userRepository = {
         return result.rows[0];
     },
 
-    // Newest first; `id` breaks ties so a page boundary never repeats or skips a row.
-    async selectPage(filter: UserListFilter, limit: number, offset: number): Promise<UserRow[]> {
+    async selectPage(filter: UserListFilter, sort: UserSort, limit: number, offset: number): Promise<UserRow[]> {
         const result = await pool.query<UserRow>(
             `${USER_SELECT}
              ${USER_LIST_WHERE}
-             ORDER BY u.created_at DESC, u.id DESC
+             ${toOrderBy(SORT_EXPRESSIONS, sort, 'u.id')}
              LIMIT $3 OFFSET $4`,
             [filter.statuses ?? null, toContainsPattern(filter.search), limit, offset],
         );

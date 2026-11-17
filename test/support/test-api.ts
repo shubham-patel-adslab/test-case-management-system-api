@@ -12,8 +12,13 @@ import type { z } from 'zod';
 
 import { app } from '../../src/app/app.js';
 import { pool } from '../../src/app/database.js';
+import { deleteFile } from '../../src/app/file-storage.js';
 import { ACCESS_TOKEN_COOKIE_NAME } from '../../src/features/authentication/authentication.constant.js';
 import { signAccessToken } from '../../src/features/authentication/authentication.token.js';
+import {
+    projectDetailsResponseSchema,
+    type ProjectDetailsResponseDto,
+} from '../../src/features/project/project.response.dto.js';
 import { userService } from '../../src/features/user/user.service.js';
 import { errorResponseSchema, type ErrorResponseDto } from '../../src/shared/response/error.response.dto.js';
 
@@ -58,6 +63,11 @@ export async function startTestServer(): Promise<void> {
 export async function stopTestServer(): Promise<void> {
     await new Promise<void>((resolve, reject) => server?.close((error) => (error ? reject(error) : resolve())));
     await pool.end();
+}
+
+// The full URL of an API path, for requests the JSON helper doesn't cover (uploads, downloads).
+export function apiUrl(path: string): string {
+    return baseUrl + path;
 }
 
 export async function request(
@@ -145,6 +155,26 @@ export function testProjectBody(label: string, memberIds: string[] = []) {
     return { name: `${TEST_PROJECT_NAME_PREFIX}${label}-${randomUUID().slice(0, 8)}`, description: '', version: '1.0', status: 'ACTIVE', memberIds };
 }
 
+// A project created through the API by `caller`, with `memberIds` as its team.
+export async function createTestProject(caller: TestUser, memberIds: string[] = [], label = 'project'): Promise<ProjectDetailsResponseDto> {
+    const response = await request('POST', '/projects', { token: caller.token, body: testProjectBody(label, memberIds) });
+
+    return expectBody(response, 201, projectDetailsResponseSchema);
+}
+
+// A suite inserted directly (setup shortcut for test case tests; the suite API is covered in test-suite.test.ts).
+// Removed by deleteTestProjects.
+export async function createTestSuite(projectId: number, name = `Suite ${randomUUID().slice(0, 8)}`): Promise<number> {
+    const result = await pool.query<{ id: number }>('INSERT INTO test_suites (project_id, name) VALUES ($1, $2) RETURNING id', [projectId, name]);
+    const id = result.rows[0]?.id;
+
+    if (id === undefined) {
+        throw new Error('INSERT test_suites returned no row');
+    }
+
+    return id;
+}
+
 export async function countProjectsByName(name: string): Promise<number> {
     const result = await pool.query<{ total: number }>('SELECT COUNT(*)::int AS total FROM projects WHERE name = $1', [name]);
 
@@ -152,7 +182,24 @@ export async function countProjectsByName(name: string): Promise<number> {
 }
 
 // starts_with, not LIKE: the prefix is matched literally. Also removes leftovers of a crashed earlier run.
+// Children first, in foreign-key order: attachments and defects block executions, executions block suite
+// runs, and all of them block the project (ON DELETE RESTRICT). Steps, audit logs, suite mappings and
+// memberships go with their parents (ON DELETE CASCADE).
 export async function deleteTestProjects(): Promise<void> {
+    const testProjectIds = 'SELECT id FROM projects WHERE starts_with(name, $1)';
+    const testExecutionIds = `SELECT id FROM test_executions WHERE project_id IN (${testProjectIds})`;
+
+    // Attachment files on disk too (UPLOAD_DIR), then their rows.
+    const attachments = await pool.query<{ stored_name: string }>(
+        `DELETE FROM attachments WHERE test_execution_id IN (${testExecutionIds}) RETURNING stored_name`,
+        [TEST_PROJECT_NAME_PREFIX],
+    );
+    await Promise.all(attachments.rows.map((row) => deleteFile(row.stored_name)));
+    await pool.query(`DELETE FROM defects WHERE project_id IN (${testProjectIds})`, [TEST_PROJECT_NAME_PREFIX]);
+    await pool.query(`DELETE FROM test_executions WHERE project_id IN (${testProjectIds})`, [TEST_PROJECT_NAME_PREFIX]);
+    await pool.query(`DELETE FROM suite_runs WHERE project_id IN (${testProjectIds})`, [TEST_PROJECT_NAME_PREFIX]);
+    await pool.query(`DELETE FROM test_suites WHERE project_id IN (${testProjectIds})`, [TEST_PROJECT_NAME_PREFIX]);
+    await pool.query(`DELETE FROM test_cases WHERE project_id IN (${testProjectIds})`, [TEST_PROJECT_NAME_PREFIX]);
     await pool.query('DELETE FROM projects WHERE starts_with(name, $1)', [TEST_PROJECT_NAME_PREFIX]);
 }
 

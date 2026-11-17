@@ -1,5 +1,5 @@
 import type { UserRow } from './user.repository.js';
-import type { UserDetailsResponseDto } from './user.response.dto.js';
+import type { UserDetailsResponseDto, UserReferenceResponseDto } from './user.response.dto.js';
 
 // The only place a user row becomes an API response. Fields are picked one by one, never spread.
 export function toUserDetailsResponseDto(row: UserRow): UserDetailsResponseDto {
@@ -17,3 +17,9 @@ export function toUserDetailsResponseDto(row: UserRow): UserDetailsResponseDto {
         updatedAt: row.updated_at.toISOString(),
     };
 }
+
+// From a LEFT JOIN on users: null when there is no user (none set, or the user row was removed).
+export function toUserReferenceResponseDto(id: string | null, firstName: string | null, lastName: string | null): UserReferenceResponseDto | null {
+    return id === null || firstName === null ? null : { id, firstName, lastName };
+}
+

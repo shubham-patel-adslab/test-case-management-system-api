@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { uuidSchema } from '../../shared/request/id.schema.js';
 import { pageRequestSchema } from '../../shared/request/page.request.dto.js';
+import { sortSchema, type Sort } from '../../shared/request/sort.schema.js';
 import {
     PASSWORD_MAX_BYTES,
     PASSWORD_MIN_LENGTH,
@@ -10,8 +11,11 @@ import {
     USER_EMAIL_MAX_LENGTH,
     USER_NAME_MAX_LENGTH,
     USER_SEARCH_MAX_LENGTH,
+    USER_DEFAULT_SORT,
     USER_SETTABLE_STATUSES,
+    USER_SORT_FIELDS,
     USER_STATUS,
+    type UserSortField,
 } from './user.constant.js';
 
 // Trimmed and lowercased before the format check, so " Ana@Example.com" is stored and logs in as
@@ -78,6 +82,7 @@ export const userPageRequestSchema = pageRequestSchema.extend({
     // Matches first name, last name, "first last" and email, case-insensitively.
     search: z.string().trim().min(1).max(USER_SEARCH_MAX_LENGTH).optional(),
     status: z.enum(USER_STATUS).optional(),
+    sort: sortSchema(USER_SORT_FIELDS, USER_DEFAULT_SORT),
 });
 
 export const userIdParamsSchema = z.object({
@@ -87,4 +92,5 @@ export const userIdParamsSchema = z.object({
 export type UserCreateRequestDto = z.infer<typeof userCreateRequestSchema>;
 export type UserUpdateRequestDto = z.infer<typeof userUpdateRequestSchema>;
 export type UserStatusUpdateRequestDto = z.infer<typeof userStatusUpdateRequestSchema>;
+export type UserSort = Sort<UserSortField>;
 export type UserPageRequestDto = z.infer<typeof userPageRequestSchema>;

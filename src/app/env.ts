@@ -15,6 +15,9 @@ const envSchema = z.object({
     MAIL_FROM: z.string().trim().min(1),
     // Where the UI runs; invitation links point to its /set-password page.
     UI_BASE_URL: z.url({ protocol: /^https?$/ }),
+    // Directory for uploaded attachments (relative to the working directory, or absolute). Outside any public
+    // folder: files are served only through the authorized download route. On a server, a persistent volume.
+    UPLOAD_DIR: z.string().trim().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

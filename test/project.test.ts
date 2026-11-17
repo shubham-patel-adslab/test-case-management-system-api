@@ -98,6 +98,15 @@ describe('POST /projects', () => {
         }
     });
 
+    // Audit: who created the project (not in the response — nothing in the UI shows it yet).
+    it('records the creator in created_by', async () => {
+        const lead = await createTestUser('TEST_LEAD');
+        const project = await createProject(lead);
+
+        const stored = await pool.query<{ created_by: string }>('SELECT created_by FROM projects WHERE id = $1', [project.id]);
+        expect(stored.rows[0]?.created_by).toBe(lead.id);
+    });
+
     // Otherwise a test lead would create a project and immediately lose sight of it.
     it('a TEST_LEAD creator always joins the team; an ADMIN creator does not need to', async () => {
         const lead = await createTestUser('TEST_LEAD');
@@ -193,27 +202,33 @@ describe('Membership scoping', () => {
 });
 
 describe('GET /projects', () => {
-    // The UI's table relies on the envelope, newest-first order and an honest total on a page past the end.
-    it('paginates the caller\'s projects newest first, with members; a page past the end is empty with real totals', async () => {
+    // The UI's table relies on the envelope, the default order (name A→Z, ignoring case, when the client sends
+    // no sort) and an honest total on a page past the end.
+    it('paginates the caller\'s projects by name by default, with members; a page past the end is empty with real totals', async () => {
         const tester = await createTestUser('TESTER');
-        const first = await createProject(admin, [tester.id], 'first');
-        const second = await createProject(admin, [tester.id], 'second');
-        const third = await createProject(admin, [tester.id], 'third');
+        const charlie = await createProject(admin, [tester.id], 'charlie');
+        const alpha = await createProject(admin, [tester.id], 'Alpha');
+        const bravo = await createProject(admin, [tester.id], 'bravo');
 
         const page1 = expectBody(await request('GET', '/projects?page=1&pageSize=2', { token: tester.token }), 200, projectPageResponseSchema);
         expect(page1).toMatchObject({ page: 1, pageSize: 2, totalItems: 3, totalPages: 2 });
-        expect(page1.items.map((p) => p.id)).toEqual([third.id, second.id]);
+        expect(page1.items.map((p) => p.id)).toEqual([alpha.id, bravo.id]);
         expect(page1.items[0]?.members.map((m) => m.id)).toEqual([tester.id]);
 
         const page2 = expectBody(await request('GET', '/projects?page=2&pageSize=2', { token: tester.token }), 200, projectPageResponseSchema);
-        expect(page2.items.map((p) => p.id)).toEqual([first.id]);
+        expect(page2.items.map((p) => p.id)).toEqual([charlie.id]);
+
+        const newest = expectBody(await request('GET', '/projects?sort=createdAt:desc', { token: tester.token }), 200, projectPageResponseSchema);
+        expect(newest.items.map((p) => p.id)).toEqual([bravo.id, alpha.id, charlie.id]);
 
         const past = expectBody(await request('GET', '/projects?page=5&pageSize=2', { token: tester.token }), 200, projectPageResponseSchema);
         expect(past).toMatchObject({ items: [], totalItems: 3, totalPages: 2 });
     });
 
-    it('rejects out-of-range paging with 400 on the field', async () => {
-        for (const [query, field] of [['pageSize=101', 'pageSize'], ['page=0', 'page'], ['pageSize=abc', 'pageSize']]) {
+    it('rejects out-of-range paging and an unknown sort with 400 on the field', async () => {
+        const cases = [['pageSize=101', 'pageSize'], ['page=0', 'page'], ['pageSize=abc', 'pageSize'], ['sort=status:asc', 'sort'], ['sort=name', 'sort']];
+
+        for (const [query, field] of cases) {
             const error = expectError(await request('GET', `/projects?${query}`, { token: admin.token }), 400, 'VALIDATION_ERROR');
 
             expect(error.details?.[0]?.field).toBe(field);
@@ -231,6 +246,20 @@ describe('GET /projects/:projectId', () => {
 });
 
 describe('DELETE /projects/:projectId', () => {
+    // A project delete must never silently wipe its test cases or suites: the database refuses it
+    // (ON DELETE RESTRICT) and the API turns that into a 409, keeping everything intact.
+    it('answers 409 CONFLICT while the project has a test case or a test suite, and keeps it', async () => {
+        const withCase = await createProject(admin);
+        await pool.query(`INSERT INTO test_cases (project_id, title, priority, type) VALUES ($1, 'Login works', 'HIGH', 'FUNCTIONAL')`, [withCase.id]);
+        const withSuite = await createProject(admin);
+        await pool.query(`INSERT INTO test_suites (project_id, name) VALUES ($1, 'Smoke')`, [withSuite.id]);
+
+        for (const project of [withCase, withSuite]) {
+            expectError(await request('DELETE', `/projects/${project.id}`, { token: admin.token }), 409, 'CONFLICT');
+            expectBody(await request('GET', `/projects/${project.id}`, { token: admin.token }), 200, projectDetailsResponseSchema);
+        }
+    });
+
     it('deletes the project and its memberships (204); a second delete is 404', async () => {
         const tester = await createTestUser('TESTER');
         const project = await createProject(admin, [tester.id]);
@@ -268,5 +297,19 @@ describe('GET /projects/member-candidates', () => {
         }
 
         expectError(await request('GET', '/projects/member-candidates', { token: tester.token }), 403, 'FORBIDDEN');
+    });
+
+    // A picker: people are found by name, so they're listed by name ("first last", ignoring case), not by age.
+    it('lists candidates by name', async () => {
+        const lead = await createTestUser('TEST_LEAD');
+        const marker = testEmail('picker').split('@')[0] ?? '';
+
+        for (const firstName of ['zoe', 'Adam', 'mia']) {
+            const body = { firstName, lastName: marker, email: testEmail(firstName), roleCode: 'TESTER' };
+            expectBody(await request('POST', '/users', { token: admin.token, body }), 201, userDetailsResponseSchema);
+        }
+
+        const page = expectBody(await request('GET', `/projects/member-candidates?search=${encodeURIComponent(marker)}`, { token: lead.token }), 200, projectMemberCandidatePageResponseSchema);
+        expect(page.items.map((candidate) => candidate.firstName)).toEqual(['Adam', 'mia', 'zoe']);
     });
 });

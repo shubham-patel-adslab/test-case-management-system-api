@@ -1,8 +1,8 @@
-import { pool, type Queryable } from '../../app/database.js';
+import { pool, toOrderBy, type Queryable } from '../../app/database.js';
 import { USER_STATUS } from '../user/user.constant.js';
 import type { UserRow } from '../user/user.repository.js';
-import type { PROJECT_STATUSES } from './project.constant.js';
-import type { ProjectCreateRequestDto } from './project.request.dto.js';
+import type { PROJECT_STATUSES, ProjectSortField } from './project.constant.js';
+import type { ProjectCreateRequestDto, ProjectSort } from './project.request.dto.js';
 
 // A row exactly as `pg` returns it from the projects table.
 export type ProjectRow = {
@@ -29,8 +29,24 @@ export type ProjectScope = string | null;
 
 type ProjectFields = Pick<ProjectCreateRequestDto, 'name' | 'description' | 'version' | 'status'>;
 
+// ON DELETE RESTRICT foreign keys: a project that still has test cases, suites or execution history (which
+// is never deleted) can't be deleted.
+export const PROJECT_CONTENT_FOREIGN_KEYS = [
+    'fk_test_cases_projects',
+    'fk_test_suites_projects',
+    'fk_test_executions_projects',
+    'fk_suite_runs_projects',
+] as const;
+
 // A fixed list of column names (never request input), so interpolating it into SQL is safe.
 const PROJECT_COLUMNS = 'id, name, description, version, status, created_at, updated_at';
+
+// Names compare case-insensitively ("alpha" next to "Alpha", not after "Zeta").
+const SORT_EXPRESSIONS: Record<ProjectSortField, string> = {
+    name: 'lower(p.name)',
+    createdAt: 'p.created_at',
+    updatedAt: 'p.updated_at',
+};
 
 // The scope filter on projects aliased `p`. `parameter` is a fixed placeholder such as '$1', never input.
 // Served by uq_project_members_project_id_user_id.
@@ -52,13 +68,12 @@ function firstRowOrThrow<TRow>(rows: TRow[], operation: string): TRow {
 
 // `db` defaults to the pool; pass the transaction's client to run inside withTransaction().
 export const projectRepository = {
-    // Newest first; `id` breaks ties so a page boundary never repeats or skips a row.
-    async selectPage(scope: ProjectScope, limit: number, offset: number): Promise<ProjectRow[]> {
+    async selectPage(scope: ProjectScope, sort: ProjectSort, limit: number, offset: number): Promise<ProjectRow[]> {
         const result = await pool.query<ProjectRow>(
             `SELECT ${PROJECT_COLUMNS}
                FROM projects p
               WHERE ${isInScope('$1')}
-              ORDER BY created_at DESC, id DESC
+              ${toOrderBy(SORT_EXPRESSIONS, sort, 'p.id')}
               LIMIT $2 OFFSET $3`,
             [scope, limit, offset],
         );
@@ -85,12 +100,24 @@ export const projectRepository = {
         return result.rows[0];
     },
 
-    async insert(project: ProjectFields, db: Queryable = pool): Promise<ProjectRow> {
+    // For work inside a project (test cases, suites): does it exist in the caller's scope? `isLocked` (inside a
+    // transaction) takes FOR KEY SHARE on the project row until the transaction ends: the project can't be
+    // deleted meanwhile, while edits of the project itself aren't blocked.
+    async existsInScope(id: number, scope: ProjectScope, db: Queryable = pool, isLocked = false): Promise<boolean> {
+        const result = await db.query(
+            `SELECT 1 FROM projects p WHERE id = $1 AND ${isInScope('$2')} ${isLocked ? 'FOR KEY SHARE' : ''}`,
+            [id, scope],
+        );
+
+        return result.rowCount === 1;
+    },
+
+    async insert(project: ProjectFields, createdById: string, db: Queryable = pool): Promise<ProjectRow> {
         const result = await db.query<ProjectRow>(
-            `INSERT INTO projects (name, description, version, status)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO projects (name, description, version, status, created_by)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING ${PROJECT_COLUMNS}`,
-            [project.name, project.description, project.version, project.status],
+            [project.name, project.description, project.version, project.status, createdById],
         );
 
         return firstRowOrThrow(result.rows, 'INSERT project');
@@ -110,7 +137,8 @@ export const projectRepository = {
         return result.rows[0];
     },
 
-    // false = no such project, or not in the caller's scope. Memberships go with it (ON DELETE CASCADE).
+    // false = no such project, or not in the caller's scope. Memberships go with it (ON DELETE CASCADE); a
+    // project that still has test cases or suites throws a foreign key violation (PROJECT_CONTENT_FOREIGN_KEYS).
     async deleteById(id: number, scope: ProjectScope): Promise<boolean> {
         const result = await pool.query(`DELETE FROM projects p WHERE id = $1 AND ${isInScope('$2')}`, [id, scope]);
 

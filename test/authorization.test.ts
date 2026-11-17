@@ -33,6 +33,23 @@ const PROJECT_PERMISSIONS_BY_ROLE = {
     READ_ONLY: ['READ'],
 } as const;
 
+// Execution-related grants per role (PRD Features §1/§4: tester, test-lead and admin execute and raise
+// defects; only admin and test-lead assign; read-only views).
+const EXECUTION_PERMISSIONS_BY_ROLE = {
+    ADMIN: { TEST_EXECUTION: ['CREATE', 'READ', 'UPDATE'], TEST_ASSIGNMENT: ['CREATE'], DEFECT: ['CREATE', 'READ'] },
+    TEST_LEAD: { TEST_EXECUTION: ['CREATE', 'READ', 'UPDATE'], TEST_ASSIGNMENT: ['CREATE'], DEFECT: ['CREATE', 'READ'] },
+    TESTER: { TEST_EXECUTION: ['CREATE', 'READ', 'UPDATE'], DEFECT: ['CREATE', 'READ'] },
+    READ_ONLY: { TEST_EXECUTION: ['READ'], DEFECT: ['READ'] },
+} as const;
+
+// Same grants on TEST_CASE and TEST_SUITE (PRD Features §3/§6: admin and test-lead manage, others view).
+const TEST_CONTENT_PERMISSIONS_BY_ROLE = {
+    ADMIN: ['CREATE', 'DELETE', 'READ', 'UPDATE'],
+    TEST_LEAD: ['CREATE', 'DELETE', 'READ', 'UPDATE'],
+    TESTER: ['READ'],
+    READ_ONLY: ['READ'],
+} as const;
+
 let admin: TestUser;
 let target: TestUser;
 
@@ -75,24 +92,32 @@ function userEndpoints(newUserEmail: string) {
 
 describe('GET /authorization/me — role and permissions from the database', () => {
     // The UI's can(resource, permission) reads this map; it must match the seeded grants exactly.
-    it('ADMIN gets every USER and PROJECT permission, and ALL_PROJECTS (no membership needed)', async () => {
+    it('ADMIN gets every USER, PROJECT, TEST_CASE and TEST_SUITE permission, and ALL_PROJECTS (no membership needed)', async () => {
         const context = expectBody(await request('GET', '/authorization/me', { token: admin.token }), 200, authorizationContextResponseSchema.strict());
 
         expect(context.role).toEqual({ code: 'ADMIN', name: 'Admin' });
         expect(context.permissions).toEqual({
             ALL_PROJECTS: ['DELETE', 'READ', 'UPDATE'],
             PROJECT: PROJECT_PERMISSIONS_BY_ROLE.ADMIN,
+            TEST_CASE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,
+            TEST_SUITE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,
+            ...EXECUTION_PERMISSIONS_BY_ROLE.ADMIN,
             USER: ['CREATE', 'DELETE', 'READ', 'UPDATE'],
         });
     });
 
     for (const roleCode of NON_ADMIN_ROLES) {
-        it(`${roleCode} gets its PROJECT permissions, no ALL_PROJECTS and no USER permission (least privilege)`, async () => {
+        it(`${roleCode} gets its PROJECT, TEST_CASE and TEST_SUITE permissions, no ALL_PROJECTS and no USER permission (least privilege)`, async () => {
             const user = await createTestUser(roleCode);
             const context = expectBody(await request('GET', '/authorization/me', { token: user.token }), 200, authorizationContextResponseSchema);
 
             expect(context.role.code).toBe(roleCode);
-            expect(context.permissions).toEqual({ PROJECT: PROJECT_PERMISSIONS_BY_ROLE[roleCode] });
+            expect(context.permissions).toEqual({
+                PROJECT: PROJECT_PERMISSIONS_BY_ROLE[roleCode],
+                TEST_CASE: TEST_CONTENT_PERMISSIONS_BY_ROLE[roleCode],
+                TEST_SUITE: TEST_CONTENT_PERMISSIONS_BY_ROLE[roleCode],
+                ...EXECUTION_PERMISSIONS_BY_ROLE[roleCode],
+            });
         });
     }
 });

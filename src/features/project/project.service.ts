@@ -1,4 +1,4 @@
-import { withTransaction, type Queryable } from '../../app/database.js';
+import { isForeignKeyViolation, withTransaction, type Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
@@ -6,8 +6,9 @@ import { PERMISSION_CODE, RESOURCE_CODE, type PermissionCode } from '../authoriz
 import { authorizationService } from '../authorization/authorization.service.js';
 import { USER_STATUS } from '../user/user.constant.js';
 import { userRepository } from '../user/user.repository.js';
+import type { UserSort } from '../user/user.request.dto.js';
 import { toProjectDetailsResponseDto, toProjectMemberResponseDto } from './project.mapper.js';
-import { projectRepository, type ProjectRow, type ProjectScope } from './project.repository.js';
+import { PROJECT_CONTENT_FOREIGN_KEYS, projectRepository, type ProjectRow, type ProjectScope } from './project.repository.js';
 import type {
     ProjectCreateRequestDto,
     ProjectMemberCandidatePageRequestDto,
@@ -22,6 +23,8 @@ import type {
 
 // Users who can be added to a team. INVITED users can: they join the project before their first sign-in.
 const MEMBER_CANDIDATE_STATUSES = [USER_STATUS.ACTIVE, USER_STATUS.INVITED];
+// The picker lists people by name, so the one you're looking for is easy to find.
+const MEMBER_CANDIDATE_SORT: UserSort = { field: 'name', direction: 'asc' };
 
 // A project outside the caller's scope is a 404 like a missing one, so non-members can't probe which
 // project ids exist.
@@ -64,7 +67,7 @@ export const projectService = {
         const offset = (request.page - 1) * request.pageSize;
 
         const [rows, totalItems] = await Promise.all([
-            projectRepository.selectPage(scope, request.pageSize, offset),
+            projectRepository.selectPage(scope, request.sort, request.pageSize, offset),
             projectRepository.count(scope),
         ]);
 
@@ -94,7 +97,7 @@ export const projectService = {
         const scope = await scopeOf(authUser, PERMISSION_CODE.READ);
 
         return withTransaction(async (client) => {
-            const row = await projectRepository.insert(request, client);
+            const row = await projectRepository.insert(request, authUser.id, client);
 
             await setMembers(row.id, request.memberIds, scope, authUser, client);
 
@@ -118,8 +121,49 @@ export const projectService = {
         });
     },
 
+    // The database refuses to delete a project that still has test cases, suites or execution history (ON
+    // DELETE RESTRICT), so a delete can't silently wipe them; checking in the same statement leaves no
+    // check-then-delete race. A project with execution history can only be archived (status ARCHIVED).
     async delete(authUser: AuthUser, projectId: number): Promise<void> {
-        if (!(await projectRepository.deleteById(projectId, await scopeOf(authUser, PERMISSION_CODE.DELETE)))) {
+        const scope = await scopeOf(authUser, PERMISSION_CODE.DELETE);
+        let isDeleted: boolean;
+
+        try {
+            isDeleted = await projectRepository.deleteById(projectId, scope);
+        } catch (error) {
+            if (isForeignKeyViolation(error, PROJECT_CONTENT_FOREIGN_KEYS)) {
+                throw new AppError(409, ERROR_CODE.CONFLICT, 'The project has test cases, test suites or execution history. Delete its test cases and suites first; a project with execution history can only be archived', { cause: error });
+            }
+
+            throw error;
+        }
+
+        if (!isDeleted) {
+            throw projectNotFound();
+        }
+    },
+
+    // Whether a given user (not necessarily the caller) may act on the project with `permission` — e.g.
+    // whether a test case can be assigned to them.
+    async canAccess(userId: string, projectId: number, permission: PermissionCode): Promise<boolean> {
+        return projectRepository.existsInScope(projectId, await scopeOf({ id: userId }, permission));
+    },
+
+    // Gates for features inside a project (test cases, suites). 404 unless the project exists and the caller
+    // may act on it: every project with the matching ALL_PROJECTS grant, otherwise only their own. The
+    // route has already checked the feature's own permission (e.g. TEST_CASE READ).
+    async assertReadable(authUser: AuthUser, projectId: number): Promise<void> {
+        if (!(await projectRepository.existsInScope(projectId, await scopeOf(authUser, PERMISSION_CODE.READ)))) {
+            throw projectNotFound();
+        }
+    },
+
+    // Changing a project's content is acting on the project, so the scope is ALL_PROJECTS UPDATE. Call it
+    // first inside the write's transaction: it locks the project row so it can't be deleted halfway.
+    async assertWritable(authUser: AuthUser, projectId: number, client: Queryable): Promise<void> {
+        const scope = await scopeOf(authUser, PERMISSION_CODE.UPDATE);
+
+        if (!(await projectRepository.existsInScope(projectId, scope, client, true))) {
             throw projectNotFound();
         }
     },
@@ -130,7 +174,7 @@ export const projectService = {
         const offset = (request.page - 1) * request.pageSize;
 
         const [rows, totalItems] = await Promise.all([
-            userRepository.selectPage(filter, request.pageSize, offset),
+            userRepository.selectPage(filter, MEMBER_CANDIDATE_SORT, request.pageSize, offset),
             userRepository.count(filter),
         ]);
 

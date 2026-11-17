@@ -73,7 +73,7 @@ export const userService = {
         const offset = (request.page - 1) * request.pageSize;
 
         const [rows, totalItems] = await Promise.all([
-            userRepository.selectPage(filter, request.pageSize, offset),
+            userRepository.selectPage(filter, request.sort, request.pageSize, offset),
             userRepository.count(filter),
         ]);
 

@@ -1,12 +1,18 @@
 import { Router } from 'express';
 
+import { attachmentRouter, executionAttachmentRouter } from '../features/attachment/attachment.routes.js';
 import { authenticate } from '../features/authentication/authentication.middleware.js';
 import { authenticationRouter } from '../features/authentication/authentication.routes.js';
 import { authorizationRouter } from '../features/authorization/authorization.routes.js';
+import { defectRouter } from '../features/defect/defect.routes.js';
 import { healthRouter } from '../features/health/health.routes.js';
 import { invitationRouter } from '../features/invitation/invitation.routes.js';
 import { projectRouter } from '../features/project/project.routes.js';
 import { roleRouter } from '../features/role/role.routes.js';
+import { suiteRunRouter, testSuiteRunRouter } from '../features/suite-run/suite-run.routes.js';
+import { testCaseRouter } from '../features/test-case/test-case.routes.js';
+import { testExecutionRouter } from '../features/test-execution/test-execution.routes.js';
+import { testSuiteRouter } from '../features/test-suite/test-suite.routes.js';
 import { userRouter } from '../features/user/user.routes.js';
 import { createDocsRouter } from './openapi.js';
 
@@ -28,4 +34,13 @@ apiRouter.use(authenticate);
 apiRouter.use('/authorization', authorizationRouter);
 apiRouter.use('/users', userRouter);
 apiRouter.use('/roles', roleRouter);
+// Project-scoped features: nested under their project, so every request names it (api-requirements §2).
+apiRouter.use('/projects/:projectId/test-cases', testCaseRouter);
+apiRouter.use('/projects/:projectId/test-suites/:suiteId/runs', testSuiteRunRouter);
+apiRouter.use('/projects/:projectId/test-suites', testSuiteRouter);
+apiRouter.use('/projects/:projectId/test-executions/:executionId/defects', defectRouter);
+apiRouter.use('/projects/:projectId/test-executions/:executionId/attachments', executionAttachmentRouter);
+apiRouter.use('/projects/:projectId/test-executions', testExecutionRouter);
+apiRouter.use('/projects/:projectId/suite-runs', suiteRunRouter);
+apiRouter.use('/projects/:projectId/attachments', attachmentRouter);
 apiRouter.use('/projects', projectRouter);

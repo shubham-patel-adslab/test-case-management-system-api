@@ -1,5 +1,6 @@
 import pg from 'pg';
 
+import type { Sort, SortDirection } from '../shared/request/sort.schema.js';
 import { env } from './env.js';
 
 // All TCMS tables live in the `tcms` schema, not `public`. Setting search_path on every pooled connection
@@ -53,6 +54,7 @@ export async function withTransaction<T>(work: (client: pg.PoolClient) => Promis
 }
 
 const PG_UNIQUE_VIOLATION = '23505';
+const PG_FOREIGN_KEY_VIOLATION = '23503';
 
 // For UPDATEs, where ON CONFLICT isn't available: lets a repository's caller turn a specific UNIQUE
 // constraint violation into a 409 instead of a 500.
@@ -61,3 +63,31 @@ export function isUniqueViolation(error: unknown, constraintName: string): boole
         && error.code === PG_UNIQUE_VIOLATION
         && error.constraint === constraintName;
 }
+
+// A DELETE refused by an ON DELETE RESTRICT foreign key (other rows still reference the row): lets the
+// caller answer 409 for a specific constraint instead of 500.
+export function isForeignKeyViolation(error: unknown, constraintNames: readonly string[]): boolean {
+    return error instanceof pg.DatabaseError
+        && error.code === PG_FOREIGN_KEY_VIOLATION
+        && error.constraint !== undefined
+        && constraintNames.includes(error.constraint);
+}
+
+// An ILIKE pattern matching `search` anywhere, or null when there is no search (the "NULL = filter not
+// applied" convention of the list queries). `%` and `_` typed by the user are literal characters, not
+// wildcards.
+export function toContainsPattern(search: string | undefined): string | null {
+    return search === undefined ? null : `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+const SORT_KEYWORDS: Record<SortDirection, string> = { asc: 'ASC', desc: 'DESC' };
+
+// A list's ORDER BY from its fixed map of SQL expressions — never request input. The direction applies to the
+// expression's last term (so 'x IS NULL, x' keeps NULLs last both ways). `tieBreaker` (a unique column, same
+// direction) makes the order total, so a page boundary never repeats or skips a row.
+export function toOrderBy<TField extends string>(expressions: Record<TField, string>, sort: Sort<TField>, tieBreaker: string): string {
+    const direction = SORT_KEYWORDS[sort.direction];
+
+    return `ORDER BY ${expressions[sort.field]} ${direction}, ${tieBreaker} ${direction}`;
+}
+

@@ -1,14 +1,18 @@
 import { z } from 'zod';
 
 import { idParamSchema, idSchema, uuidSchema } from '../../shared/request/id.schema.js';
-import { pageRequestSchema, type PageRequestDto } from '../../shared/request/page.request.dto.js';
+import { pageRequestSchema } from '../../shared/request/page.request.dto.js';
+import { sortSchema, type Sort } from '../../shared/request/sort.schema.js';
 import { USER_SEARCH_MAX_LENGTH } from '../user/user.constant.js';
 import {
+    PROJECT_DEFAULT_SORT,
     PROJECT_DESCRIPTION_MAX_LENGTH,
     PROJECT_MEMBERS_MAX,
     PROJECT_NAME_MAX_LENGTH,
+    PROJECT_SORT_FIELDS,
     PROJECT_STATUSES,
     PROJECT_VERSION_MAX_LENGTH,
+    type ProjectSortField,
 } from './project.constant.js';
 
 // Same rules as the UI's project form schema. trim() runs first, so a whitespace-only name fails
@@ -34,9 +38,11 @@ export const projectUpdateRequestSchema = projectFieldsSchema
     .extend({ id: idSchema })
     .meta({ id: 'ProjectUpdateRequest' });
 
-export const projectPageRequestSchema = pageRequestSchema;
+export const projectPageRequestSchema = pageRequestSchema.extend({
+    sort: sortSchema(PROJECT_SORT_FIELDS, PROJECT_DEFAULT_SORT),
+});
 
-// The member picker: users who can be added to a project.
+// The member picker: users who can be added to a project, by name (no sort option — it's a picker).
 export const projectMemberCandidatePageRequestSchema = pageRequestSchema.extend({
     // Matches first name, last name, "first last" and email, case-insensitively.
     search: z.string().trim().min(1).max(USER_SEARCH_MAX_LENGTH).optional(),
@@ -48,5 +54,6 @@ export const projectIdParamsSchema = z.object({
 
 export type ProjectCreateRequestDto = z.infer<typeof projectCreateRequestSchema>;
 export type ProjectUpdateRequestDto = z.infer<typeof projectUpdateRequestSchema>;
-export type ProjectPageRequestDto = PageRequestDto;
+export type ProjectSort = Sort<ProjectSortField>;
+export type ProjectPageRequestDto = z.infer<typeof projectPageRequestSchema>;
 export type ProjectMemberCandidatePageRequestDto = z.infer<typeof projectMemberCandidatePageRequestSchema>;

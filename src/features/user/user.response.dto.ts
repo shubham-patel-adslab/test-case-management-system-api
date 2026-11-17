@@ -11,6 +11,16 @@ export const userRoleResponseSchema = z
     })
     .meta({ id: 'UserRoleResponse' });
 
+// A user as shown on other resources (assignee, executor, creator, audit actor): enough to display a name,
+// without the user list's details (non-admins can't read /users).
+export const userReferenceResponseSchema = z
+    .object({
+        id: z.uuid(),
+        firstName: z.string(),
+        lastName: z.string().nullable(),
+    })
+    .meta({ id: 'UserReferenceResponse' });
+
 export const userDetailsResponseSchema = z
     .object({
         id: z.uuid(),
@@ -27,6 +37,7 @@ export const userDetailsResponseSchema = z
 export const userPageResponseSchema = createPageResponseSchema(userDetailsResponseSchema)
     .meta({ id: 'UserPageResponse' });
 
+export type UserReferenceResponseDto = z.infer<typeof userReferenceResponseSchema>;
 export type UserRoleResponseDto = z.infer<typeof userRoleResponseSchema>;
 export type UserDetailsResponseDto = z.infer<typeof userDetailsResponseSchema>;
 export type UserPageResponseDto = PageResponseDto<UserDetailsResponseDto>;

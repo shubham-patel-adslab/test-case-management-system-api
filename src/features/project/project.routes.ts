@@ -131,7 +131,7 @@ openApiRegistry.registerPath({
     method: 'delete',
     path: '/projects/{projectId}',
     tags: TAGS,
-    summary: 'Delete a project (and its team)',
+    summary: 'Delete a project (and its team); refused while it has test cases or suites',
     description: SCOPE_DESCRIPTION,
     request: { params: projectIdParamsSchema },
     responses: {
@@ -140,5 +140,6 @@ openApiRegistry.registerPath({
         401: unauthorizedResponse,
         403: forbiddenResponse(DELETE),
         404: notFoundResponse,
+        409: errorResponse('The project still has test cases, test suites or execution history (archive it instead)'),
     },
 });

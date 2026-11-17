@@ -1,3 +1,4 @@
+import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import {
     PERMISSION_CODE,
     RESOURCE_CODE,
@@ -17,6 +18,14 @@ export const authorizationService = {
     // role/resource/permission takes effect immediately.
     hasPermission(userId: string, resourceCode: ResourceCode, permissionCode: PermissionCode): Promise<boolean> {
         return authorizationRepository.hasGrant(userId, resourceCode, permissionCode);
+    },
+
+    // 403 unless the user holds the grant. For checks a route can't make itself, e.g. one that depends on the
+    // request body (a bulk action).
+    async assertPermission(userId: string, resourceCode: ResourceCode, permissionCode: PermissionCode): Promise<void> {
+        if (!(await authorizationRepository.hasGrant(userId, resourceCode, permissionCode))) {
+            throw new AppError(403, ERROR_CODE.FORBIDDEN, 'You do not have permission to perform this action');
+        }
     },
 
     // The caller's role and every active (resource, permission) it holds — for the UI to show or hide

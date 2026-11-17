@@ -18,6 +18,13 @@ export type UserSettableStatus = (typeof USER_SETTABLE_STATUSES)[number];
 export const USER_NAME_MAX_LENGTH = 100;
 // Search input on user lists (users, project member candidates); long enough for a full name or an email.
 export const USER_SEARCH_MAX_LENGTH = 100;
+
+// List sorting (`sort=<field>:<direction>`): by name ("first last") A→Z unless the client asks otherwise (decided 2026-11-17 —
+// every list of named things defaults to name order). Each field maps to a fixed SQL expression in the repository.
+export const USER_SORT_FIELDS = ['name', 'email', 'createdAt'] as const;
+export const USER_DEFAULT_SORT = 'name:asc';
+
+export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 // The longest address SMTP allows (RFC 5321).
 export const USER_EMAIL_MAX_LENGTH = 254;
 // Same shape and limit as roles_std.role_code; whether the role exists is checked against the table.
