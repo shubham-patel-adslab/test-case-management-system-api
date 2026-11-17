@@ -1,12 +1,12 @@
 import { pool, type Queryable } from '../../app/database.js';
-import type { UserStatus } from './user.constant.js';
+import { USER_STATUS, type UserSettableStatus, type UserStatus } from './user.constant.js';
 
 // A user with their role, exactly as `pg` returns it. Deliberately has no password_hash: this is the row
 // that becomes a response (user.mapper.ts), so the hash can't leak through it.
 export type UserRow = {
     id: string;
     first_name: string;
-    last_name: string;
+    last_name: string | null;
     email: string;
     status: UserStatus;
     role_code: string;
@@ -15,10 +15,11 @@ export type UserRow = {
     updated_at: Date;
 };
 
-// Only what sign-in needs. Never mapped to a response.
+// Only what sign-in needs. Never mapped to a response. password_hash is null until the user accepts their
+// invitation.
 export type UserCredentialsRow = {
     id: string;
-    password_hash: string;
+    password_hash: string | null;
     status: UserStatus;
 };
 
@@ -30,7 +31,7 @@ export type UserAuthStateRow = {
 
 export type UserFields = {
     firstName: string;
-    lastName: string;
+    lastName: string | null;
     email: string;
 };
 
@@ -54,7 +55,7 @@ const USER_SELECT = `
 const USER_LIST_WHERE = `
      WHERE ($1::text IS NULL OR u.status = $1)
        AND ($2::text IS NULL
-            OR (u.first_name || ' ' || u.last_name) ILIKE $2
+            OR concat_ws(' ', u.first_name, u.last_name) ILIKE $2
             OR u.email ILIKE $2)`;
 
 // `%` and `_` typed by the user are literal characters, not wildcards.
@@ -112,15 +113,17 @@ export const userRepository = {
     },
 
     // Returns the new id, or undefined when the email is taken. ON CONFLICT makes the uniqueness check and
-    // the insert one atomic statement: no check-then-insert race. status is left to its column default
-    // (ACTIVE).
-    async insert(user: UserFields & { passwordHash: string }, db: Queryable = pool): Promise<string | undefined> {
+    // the insert one atomic statement: no check-then-insert race.
+    async insert(
+        user: UserFields & { status: UserStatus; passwordHash: string | null },
+        db: Queryable = pool,
+    ): Promise<string | undefined> {
         const result = await db.query<{ id: string }>(
-            `INSERT INTO users (first_name, last_name, email, password_hash)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO users (first_name, last_name, email, status, password_hash)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT ON CONSTRAINT ${USER_EMAIL_UNIQUE_CONSTRAINT} DO NOTHING
              RETURNING id`,
-            [user.firstName, user.lastName, user.email, user.passwordHash],
+            [user.firstName, user.lastName, user.email, user.status, user.passwordHash],
         );
 
         return result.rows[0]?.id;
@@ -139,10 +142,29 @@ export const userRepository = {
         return result.rowCount === 1;
     },
 
-    async updateStatusById(id: string, status: UserStatus): Promise<boolean> {
-        const result = await pool.query(
-            'UPDATE users SET status = $2, updated_at = now() WHERE id = $1',
+    // Reactivating a user who never set a password makes them INVITED again, not ACTIVE (decided in the
+    // statement itself, so it can't race with an invitation being accepted).
+    async updateStatusById(id: string, status: UserSettableStatus, db: Queryable = pool): Promise<boolean> {
+        const result = await db.query(
+            `UPDATE users
+                SET status = CASE WHEN $2::text = '${USER_STATUS.ACTIVE}' AND password_hash IS NULL
+                                  THEN '${USER_STATUS.INVITED}' ELSE $2::text END,
+                    updated_at = now()
+              WHERE id = $1`,
             [id, status],
+        );
+
+        return result.rowCount === 1;
+    },
+
+    // Invitation accepted: sets the first password. false = the user is no longer INVITED (deactivated in
+    // the meantime).
+    async activateWithPassword(id: string, passwordHash: string, db: Queryable = pool): Promise<boolean> {
+        const result = await db.query(
+            `UPDATE users
+                SET password_hash = $2, status = '${USER_STATUS.ACTIVE}', updated_at = now()
+              WHERE id = $1 AND status = '${USER_STATUS.INVITED}'`,
+            [id, passwordHash],
         );
 
         return result.rowCount === 1;

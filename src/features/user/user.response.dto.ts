@@ -15,7 +15,7 @@ export const userDetailsResponseSchema = z
     .object({
         id: z.uuid(),
         firstName: z.string(),
-        lastName: z.string(),
+        lastName: z.string().nullable(),
         email: z.string(),
         status: z.enum(USER_STATUS),
         role: userRoleResponseSchema,

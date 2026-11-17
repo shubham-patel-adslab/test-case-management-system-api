@@ -1,6 +1,8 @@
 import { Router } from 'express';
 
 import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { authorize } from '../authorization/authorization.middleware.js';
+import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { projectController } from './project.controller.js';
 import {
     projectCreateRequestSchema,
@@ -10,21 +12,24 @@ import {
 } from './project.request.dto.js';
 import { projectDetailsResponseSchema, projectPageResponseSchema } from './project.response.dto.js';
 
-// Authentication is applied to the whole router in api.router.ts. KNOWN GAP (decided 2026-11-17): no
-// permission check yet — every authenticated user can create and update projects until the PROJECT resource
-// and its role mappings are seeded and these routes use authorize(...). PRD Features §2 allows only admin
-// and test-lead.
+const { PROJECT } = RESOURCE_CODE;
+const { CREATE, READ, UPDATE } = PERMISSION_CODE;
+
+// Authentication is applied to the whole router in api.router.ts; each route checks its PROJECT permission
+// (every role reads; ADMIN and TEST_LEAD create and update — PRD Features §2).
 export const projectRouter = Router();
 
-projectRouter.get('/', projectController.getPage);
-projectRouter.post('/', projectController.create);
-projectRouter.get('/:projectId', projectController.getById);
-projectRouter.put('/:projectId', projectController.update);
+projectRouter.get('/', authorize(PROJECT, READ), projectController.getPage);
+projectRouter.post('/', authorize(PROJECT, CREATE), projectController.create);
+projectRouter.get('/:projectId', authorize(PROJECT, READ), projectController.getById);
+projectRouter.put('/:projectId', authorize(PROJECT, UPDATE), projectController.update);
 
 const TAGS = ['Projects'];
 
 const validationErrorResponse = errorResponse('Invalid request');
 const unauthorizedResponse = errorResponse('Missing, invalid or expired access-token cookie, or inactive account');
+const forbiddenResponse = (permission: string) =>
+    errorResponse(`Missing permission PROJECT ${permission} (code FORBIDDEN)`);
 const notFoundResponse = errorResponse('Project not found');
 
 openApiRegistry.registerPath({
@@ -37,6 +42,7 @@ openApiRegistry.registerPath({
         200: { description: 'A page of projects', content: jsonContent(projectPageResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        403: forbiddenResponse(READ),
     },
 });
 
@@ -50,6 +56,7 @@ openApiRegistry.registerPath({
         201: { description: 'Created project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        403: forbiddenResponse(CREATE),
     },
 });
 
@@ -63,6 +70,7 @@ openApiRegistry.registerPath({
         200: { description: 'The project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        403: forbiddenResponse(READ),
         404: notFoundResponse,
     },
 });
@@ -81,6 +89,7 @@ openApiRegistry.registerPath({
         200: { description: 'Updated project', content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        403: forbiddenResponse(UPDATE),
         404: notFoundResponse,
     },
 });

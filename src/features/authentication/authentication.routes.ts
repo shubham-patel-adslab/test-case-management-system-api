@@ -4,16 +4,14 @@ import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.j
 import { ACCESS_TOKEN_COOKIE_NAME } from './authentication.constant.js';
 import { authenticationController } from './authentication.controller.js';
 import { authenticate } from './authentication.middleware.js';
-import { authRateLimiter } from './authentication.rate-limit.js';
 import { authSignInRequestSchema } from './authentication.request.dto.js';
 import { authUserResponseSchema } from './authentication.response.dto.js';
 
 // Mounted before the global `authenticate` in api.router.ts. sign-in and sign-out are public (sign-out
 // must clear the cookie even when the token inside has expired); /me authenticates per route.
-// The rate limiter runs before validation, so malformed attempts count against the budget too.
 export const authenticationRouter = Router();
 
-authenticationRouter.post('/sign-in', authRateLimiter, authenticationController.signIn);
+authenticationRouter.post('/sign-in', authenticationController.signIn);
 authenticationRouter.post('/sign-out', authenticationController.signOut);
 authenticationRouter.get('/me', authenticate, authenticationController.getCurrentUser);
 
@@ -32,7 +30,6 @@ openApiRegistry.registerPath({
         400: errorResponse('Invalid request'),
         401: errorResponse('Invalid email or password (code INVALID_CREDENTIALS)'),
         403: errorResponse('Correct password but the account is deactivated (code ACCOUNT_INACTIVE)'),
-        429: errorResponse('Auth rate limit reached for this IP; see the Retry-After header'),
     },
 });
 

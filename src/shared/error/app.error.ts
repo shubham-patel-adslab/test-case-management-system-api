@@ -10,11 +10,14 @@ export const ERROR_CODE = {
     // 403 on sign-in with the right password for a deactivated account.
     ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
     NOT_FOUND: 'NOT_FOUND',
+    // 400 on accepting an invitation whose link is unknown, already used, replaced or expired.
+    INVALID_INVITATION: 'INVALID_INVITATION',
     CONFLICT: 'CONFLICT',
     PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
-    TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
     INTERNAL_ERROR: 'INTERNAL_ERROR',
     SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+    // 502: the SMTP server refused or couldn't be reached. The data change before it is already saved.
+    EMAIL_DELIVERY_FAILED: 'EMAIL_DELIVERY_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE];

@@ -52,4 +52,12 @@ export const userController = {
 
         res.json(await userService.updateStatus(getAuthUser(req), userId, status));
     },
+
+    async resendInvitation(req: Request, res: Response): Promise<void> {
+        const { userId } = parseRequest(userIdParamsSchema, req.params);
+
+        await userService.resendInvitation(getAuthUser(req), userId);
+
+        res.status(204).end();
+    },
 };

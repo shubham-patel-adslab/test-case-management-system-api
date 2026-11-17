@@ -10,6 +10,11 @@ const envSchema = z.object({
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     JWT_SECRET: z.string().min(JWT_SECRET_MIN_LENGTH),
     JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(ONE_HOUR_IN_SECONDS),
+    // Any SMTP server: Mailpit in development, a transactional email provider in production.
+    SMTP_URL: z.url({ protocol: /^smtps?$/ }),
+    MAIL_FROM: z.string().trim().min(1),
+    // Where the UI runs; invitation links point to its /set-password page.
+    UI_BASE_URL: z.url({ protocol: /^https?$/ }),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -3,6 +3,7 @@
 // of silently answering 403 on every request.
 export const RESOURCE_CODE = {
     USER: 'USER',
+    PROJECT: 'PROJECT',
 } as const;
 
 export const PERMISSION_CODE = {

@@ -2,7 +2,8 @@ import { isUniqueViolation, withTransaction, type Queryable } from '../../app/da
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
-import type { UserStatus } from './user.constant.js';
+import { invitationService } from '../invitation/invitation.service.js';
+import { USER_STATUS, type UserSettableStatus, type UserStatus } from './user.constant.js';
 import { toUserDetailsResponseDto } from './user.mapper.js';
 import { hashPassword } from './user.password.js';
 import { USER_EMAIL_UNIQUE_CONSTRAINT, userRepository } from './user.repository.js';
@@ -35,6 +36,26 @@ function selfChangeForbidden(what: 'role' | 'status'): AppError {
     return new AppError(403, ERROR_CODE.FORBIDDEN, `You cannot change your own ${what}`);
 }
 
+// Exactly one role per user, written with the user: a failed role assignment rolls the user back too.
+async function insertUserWithRole(
+    request: UserCreateRequestDto,
+    credentials: { status: UserStatus; passwordHash: string | null },
+    createdById: string | null,
+    db: Queryable,
+): Promise<string> {
+    const userId = await userRepository.insert({ ...request, ...credentials }, db);
+
+    if (!userId) {
+        throw emailTaken();
+    }
+
+    if (!(await userRepository.upsertRole(userId, request.roleCode, createdById, db))) {
+        throw unknownRole();
+    }
+
+    return userId;
+}
+
 // After a write the row must exist; inside a transaction it must be read through the same client.
 async function getUserDetails(userId: string, db?: Queryable): Promise<UserDetailsResponseDto> {
     const row = await userRepository.selectById(userId, db);
@@ -63,25 +84,52 @@ export const userService = {
         return getUserDetails(userId);
     },
 
-    // User + role in one transaction: a failed role assignment leaves no role-less user behind.
-    // `createdById` is null only for the bootstrap admin (src/scripts/create-admin.ts).
-    async create(request: UserCreateRequestDto, createdById: string | null): Promise<UserDetailsResponseDto> {
+    // An admin creates the user INVITED, without a password; the emailed link lets them set their own.
+    // User, role and invitation commit together; the email goes out after the commit.
+    async create(request: UserCreateRequestDto, createdById: string): Promise<UserDetailsResponseDto> {
+        const { user, token } = await withTransaction(async (client) => {
+            const userId = await insertUserWithRole(request, { status: USER_STATUS.INVITED, passwordHash: null }, createdById, client);
+            const invitationToken = await invitationService.issue(userId, createdById, client);
+
+            return { user: await getUserDetails(userId, client), token: invitationToken };
+        });
+
+        await invitationService.send(user, token);
+
+        return user;
+    },
+
+    // An ACTIVE user with a known password — only for the bootstrap admin (src/scripts/create-admin.ts,
+    // createdById null) and test setup; there is no API for it.
+    async createWithPassword(
+        request: UserCreateRequestDto & { password: string },
+        createdById: string | null,
+    ): Promise<UserDetailsResponseDto> {
         // Hashed before the transaction opens, so a pooled connection isn't held for ~270 ms of CPU work.
         const passwordHash = await hashPassword(request.password);
 
         return withTransaction(async (client) => {
-            const userId = await userRepository.insert({ ...request, passwordHash }, client);
-
-            if (!userId) {
-                throw emailTaken();
-            }
-
-            if (!(await userRepository.upsertRole(userId, request.roleCode, createdById, client))) {
-                throw unknownRole();
-            }
+            const userId = await insertUserWithRole(request, { status: USER_STATUS.ACTIVE, passwordHash }, createdById, client);
 
             return getUserDetails(userId, client);
         });
+    },
+
+    // Only while INVITED; replaces the pending link, so earlier links stop working.
+    async resendInvitation(actor: AuthUser, userId: string): Promise<void> {
+        const current = await userRepository.selectById(userId);
+
+        if (!current) {
+            throw userNotFound();
+        }
+
+        if (current.status !== USER_STATUS.INVITED) {
+            throw new AppError(409, ERROR_CODE.CONFLICT, 'Only a user who hasn\'t set a password yet can be sent an invitation');
+        }
+
+        const token = await withTransaction((client) => invitationService.issue(userId, actor.id, client));
+
+        await invitationService.send({ email: current.email, firstName: current.first_name }, token);
     },
 
     async update(actor: AuthUser, userId: string, request: UserUpdateRequestDto): Promise<UserDetailsResponseDto> {
@@ -92,13 +140,17 @@ export const userService = {
         }
 
         const isRoleChange = request.roleCode !== current.role_code;
+        // The pending link went to the old address — it must not stay usable; a new one goes to the new one.
+        const isInviteRedirect = request.email !== current.email && current.status === USER_STATUS.INVITED;
 
         if (isRoleChange && userId === actor.id) {
             throw selfChangeForbidden('role');
         }
 
+        let result: { user: UserDetailsResponseDto; token: string | undefined };
+
         try {
-            return await withTransaction(async (client) => {
+            result = await withTransaction(async (client) => {
                 if (!(await userRepository.updateById(userId, request, client))) {
                     throw userNotFound();
                 }
@@ -108,7 +160,9 @@ export const userService = {
                     throw unknownRole();
                 }
 
-                return getUserDetails(userId, client);
+                const token = isInviteRedirect ? await invitationService.issue(userId, actor.id, client) : undefined;
+
+                return { user: await getUserDetails(userId, client), token };
             });
         } catch (error) {
             if (isUniqueViolation(error, USER_EMAIL_UNIQUE_CONSTRAINT)) {
@@ -117,17 +171,31 @@ export const userService = {
 
             throw error;
         }
+
+        if (result.token) {
+            await invitationService.send(result.user, result.token);
+        }
+
+        return result.user;
     },
 
-    async updateStatus(actor: AuthUser, userId: string, status: UserStatus): Promise<UserDetailsResponseDto> {
+    // Deactivating revokes a pending invitation; reactivating a user without a password makes them INVITED
+    // again (userRepository.updateStatusById), and an admin re-sends the invitation.
+    async updateStatus(actor: AuthUser, userId: string, status: UserSettableStatus): Promise<UserDetailsResponseDto> {
         if (userId === actor.id) {
             throw selfChangeForbidden('status');
         }
 
-        if (!(await userRepository.updateStatusById(userId, status))) {
-            throw userNotFound();
-        }
+        return withTransaction(async (client) => {
+            if (!(await userRepository.updateStatusById(userId, status, client))) {
+                throw userNotFound();
+            }
 
-        return getUserDetails(userId);
+            if (status === USER_STATUS.INACTIVE) {
+                await invitationService.revoke(userId, client);
+            }
+
+            return getUserDetails(userId, client);
+        });
     },
 };

@@ -1,11 +1,19 @@
 // Same values as the users table's constraints. Enum-like values are UPPER_SNAKE_CASE everywhere: database,
 // TypeScript and JSON (no mapping layer).
+// INVITED = created, password not set yet (see user_invitations).
 export const USER_STATUS = {
+    INVITED: 'INVITED',
     ACTIVE: 'ACTIVE',
     INACTIVE: 'INACTIVE',
 } as const;
 
 export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];
+
+// What an admin may set through PATCH …/status. INVITED is never set directly: a user enters it on
+// creation, and reactivating a user who never set a password puts them back into it.
+export const USER_SETTABLE_STATUSES = [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE] as const;
+
+export type UserSettableStatus = (typeof USER_SETTABLE_STATUSES)[number];
 
 export const USER_NAME_MAX_LENGTH = 100;
 // The longest address SMTP allows (RFC 5321).

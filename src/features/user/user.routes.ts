@@ -26,6 +26,7 @@ userRouter.post('/', authorize(USER, CREATE), userController.create);
 userRouter.get('/:userId', authorize(USER, READ), userController.getById);
 userRouter.put('/:userId', authorize(USER, UPDATE), userController.update);
 userRouter.patch('/:userId/status', authorize(USER, UPDATE), userController.updateStatus);
+userRouter.post('/:userId/invitation', authorize(USER, UPDATE), userController.resendInvitation);
 
 const TAGS = ['Users'];
 
@@ -35,6 +36,9 @@ const forbiddenResponse = (permission: string) =>
     errorResponse(`Missing permission USER ${permission} (code FORBIDDEN)`);
 const notFoundResponse = errorResponse('User not found');
 const conflictResponse = errorResponse('Email is already in use');
+const emailDeliveryFailedResponse = errorResponse(
+    'EMAIL_DELIVERY_FAILED: the change is saved but the invitation email could not be sent — resend it',
+);
 
 openApiRegistry.registerPath({
     method: 'get',
@@ -54,15 +58,17 @@ openApiRegistry.registerPath({
     method: 'post',
     path: '/users',
     tags: TAGS,
-    summary: 'Create a user with one role and a password',
-    description: 'User and role are created in one transaction. The password is never returned.',
+    summary: 'Invite a user (created INVITED with one role; emailed a set-password link)',
+    description: 'User, role and invitation are created in one transaction; the email is sent after it commits. '
+        + 'The user has no password until they accept the invitation (`POST /invitations/accept`).',
     request: { body: { content: jsonContent(userCreateRequestSchema) } },
     responses: {
-        201: { description: 'Created user', content: jsonContent(userDetailsResponseSchema) },
+        201: { description: 'Created user (status INVITED)', content: jsonContent(userDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
         403: forbiddenResponse(CREATE),
         409: conflictResponse,
+        502: emailDeliveryFailedResponse,
     },
 });
 
@@ -86,7 +92,8 @@ openApiRegistry.registerPath({
     path: '/users/{userId}',
     tags: TAGS,
     summary: 'Update a user\'s name, email and role',
-    description: 'The body `id` must match `userId` in the URL. Changing your own role is forbidden.',
+    description: 'The body `id` must match `userId` in the URL. Changing your own role is forbidden. Changing '
+        + 'the email of an INVITED user replaces the pending link and emails it to the new address.',
     request: {
         params: userIdParamsSchema,
         body: { content: jsonContent(userUpdateRequestSchema) },
@@ -98,6 +105,7 @@ openApiRegistry.registerPath({
         403: forbiddenResponse(UPDATE),
         404: notFoundResponse,
         409: conflictResponse,
+        502: emailDeliveryFailedResponse,
     },
 });
 
@@ -106,7 +114,9 @@ openApiRegistry.registerPath({
     path: '/users/{userId}/status',
     tags: TAGS,
     summary: 'Activate or deactivate a user',
-    description: 'A deactivated user is rejected on their next request and can\'t log in. Changing your own status is forbidden.',
+    description: 'A deactivated user is rejected on their next request and can\'t sign in; a pending invitation '
+        + 'stops working. Reactivating a user who never set a password makes them INVITED again (resend the '
+        + 'invitation). Changing your own status is forbidden.',
     request: {
         params: userIdParamsSchema,
         body: { content: jsonContent(userStatusUpdateRequestSchema) },
@@ -117,5 +127,23 @@ openApiRegistry.registerPath({
         401: unauthorizedResponse,
         403: forbiddenResponse(UPDATE),
         404: notFoundResponse,
+    },
+});
+
+openApiRegistry.registerPath({
+    method: 'post',
+    path: '/users/{userId}/invitation',
+    tags: TAGS,
+    summary: 'Re-send the invitation email',
+    description: 'Only for an INVITED user. Issues a new link; every earlier link stops working.',
+    request: { params: userIdParamsSchema },
+    responses: {
+        204: { description: 'Invitation sent' },
+        400: validationErrorResponse,
+        401: unauthorizedResponse,
+        403: forbiddenResponse(UPDATE),
+        404: notFoundResponse,
+        409: errorResponse('The user is not INVITED (already set a password, or deactivated)'),
+        502: emailDeliveryFailedResponse,
     },
 });
