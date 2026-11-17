@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { app } from './app/app.js';
 import { checkDatabaseConnection, pool } from './app/database.js';
 import { env } from './app/env.js';
+import { authorizationService } from './features/authorization/authorization.service.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -21,6 +22,13 @@ try {
     await checkDatabaseConnection();
 } catch (error) {
     console.error('Cannot connect to the database — check DATABASE_URL and that PostgreSQL is running.', error);
+    process.exit(1);
+}
+
+try {
+    await authorizationService.assertCodesExist();
+} catch (error) {
+    console.error('Authorization data is incomplete — run `npm run migrate:up`.', error);
     process.exit(1);
 }
 
