@@ -5,7 +5,7 @@ import { userRepository } from '../user/user.repository.js';
 import { INVITATION_TTL_HOURS } from './invitation.constant.js';
 import { sendInvitationEmail, type InvitationRecipient } from './invitation.email.js';
 import { invitationRepository } from './invitation.repository.js';
-import type { InvitationAcceptRequestDto } from './invitation.request.dto.js';
+import type { InvitationAcceptRequestDto, InvitationVerifyRequestDto } from './invitation.request.dto.js';
 import { createInvitationToken, hashInvitationToken } from './invitation.token.js';
 
 // One message for every reason (unknown, used, replaced, expired, user deactivated): the link is dead
@@ -44,6 +44,14 @@ export const invitationService = {
     // Deactivation: a pending link must stop working.
     revoke(userId: string, db: Queryable): Promise<void> {
         return invitationRepository.deleteByUserId(userId, db);
+    },
+
+    // Read-only check for the set-password page, so a dead link is reported when the page opens rather
+    // than after the user types a password. Changes nothing: accept with the same token still works.
+    async verify(request: InvitationVerifyRequestDto): Promise<void> {
+        if (!(await invitationRepository.existsValid(hashInvitationToken(request.token)))) {
+            throw invalidInvitation();
+        }
     },
 
     async accept(request: InvitationAcceptRequestDto): Promise<void> {

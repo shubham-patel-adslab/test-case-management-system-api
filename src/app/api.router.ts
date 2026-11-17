@@ -12,8 +12,8 @@ import { createDocsRouter } from './openapi.js';
 
 export const apiRouter = Router();
 
-// Mounted before the global `authenticate`. Health, docs, sign-in, sign-out and accepting an invitation
-// are public; /auth/me authenticates per route. The docs can be built here already: the imports above ran every feature's
+// Mounted before the global `authenticate`. Health, docs, sign-in, sign-out and checking or accepting an
+// invitation are public; /auth/me authenticates per route. The docs can be built here already: the imports above ran every feature's
 // registerPath calls before this line.
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authenticationRouter);

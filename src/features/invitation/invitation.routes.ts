@@ -2,13 +2,31 @@ import { Router } from 'express';
 
 import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
 import { invitationController } from './invitation.controller.js';
-import { invitationAcceptRequestSchema } from './invitation.request.dto.js';
+import { invitationAcceptRequestSchema, invitationVerifyRequestSchema } from './invitation.request.dto.js';
 
 // Public: the invited user has no account access yet — the token is the proof. Invitations are created and
 // re-sent through /users.
 export const invitationRouter = Router();
 
+invitationRouter.post('/verify', invitationController.verify);
 invitationRouter.post('/accept', invitationController.accept);
+
+const invalidInvitationResponse = errorResponse('Invalid request, or INVALID_INVITATION (unknown, used, replaced or expired link)');
+
+openApiRegistry.registerPath({
+    method: 'post',
+    path: '/invitations/verify',
+    tags: ['Invitations'],
+    summary: 'Check an invitation link without using it',
+    description: 'For the set-password page, when it opens. Read-only: the token stays usable for /invitations/accept. '
+        + 'POST so the token stays in the body, out of URLs and logs.',
+    security: [],
+    request: { body: { content: jsonContent(invitationVerifyRequestSchema) } },
+    responses: {
+        204: { description: 'Link can be used' },
+        400: invalidInvitationResponse,
+    },
+});
 
 openApiRegistry.registerPath({
     method: 'post',
@@ -21,6 +39,6 @@ openApiRegistry.registerPath({
     request: { body: { content: jsonContent(invitationAcceptRequestSchema) } },
     responses: {
         204: { description: 'Password set; the user can sign in' },
-        400: errorResponse('Invalid request, or INVALID_INVITATION (unknown, used, replaced or expired link)'),
+        400: invalidInvitationResponse,
     },
 });

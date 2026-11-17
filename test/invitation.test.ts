@@ -47,6 +47,10 @@ function accept(token: string, password = NEW_PASSWORD) {
     return request('POST', '/invitations/accept', { body: { token, password } });
 }
 
+function verify(body: unknown) {
+    return request('POST', '/invitations/verify', { body });
+}
+
 function signIn(email: string, password = NEW_PASSWORD) {
     return request('POST', '/auth/sign-in', { body: { email, password } });
 }
@@ -64,6 +68,73 @@ describe('Invitation email', () => {
 
         const stored = await pool.query<{ token_hash: string }>('SELECT token_hash FROM user_invitations WHERE user_id = $1', [user.id]);
         expect(stored.rows[0]?.token_hash).toBe(createHash('sha256').update(token).digest('hex'));
+    });
+});
+
+describe('POST /invitations/verify', () => {
+    // The set-password page checks the link when it opens. The check must not use the link up, or the
+    // user could never set their password.
+    it('answers 204 for a usable link without consuming it: accept with the same token still works', async () => {
+        const user = await inviteUser();
+        const token = await readInvitationToken(user.email);
+
+        expect((await verify({ token })).status).toBe(204);
+        expect((await verify({ token })).status).toBe(204);
+        expect((await accept(token)).status).toBe(204);
+    });
+
+    // Every dead link gets the same answer, so the page shows one "ask for a new link" message and the
+    // response doesn't reveal why the link is dead.
+    it('answers 400 INVALID_INVITATION for a used, replaced, expired, deactivated or unknown link', async () => {
+        const used = await inviteUser();
+        const usedToken = await readInvitationToken(used.email);
+        await accept(usedToken);
+
+        const replaced = await inviteUser();
+        const replacedToken = await readInvitationToken(replaced.email);
+        await request('POST', `/users/${replaced.id}/invitation`, { token: admin.token });
+
+        const expired = await inviteUser();
+        const expiredToken = await readInvitationToken(expired.email);
+        await pool.query(
+            `UPDATE user_invitations SET created_at = now() - interval '4 days', expires_at = now() - interval '1 hour'
+              WHERE user_id = $1`,
+            [expired.id],
+        );
+
+        // Deactivated directly in SQL, keeping the invitation row: the user-status check in the query is what
+        // must reject it (the API's deactivation also deletes the row).
+        const deactivated = await inviteUser();
+        const deactivatedToken = await readInvitationToken(deactivated.email);
+        await pool.query(`UPDATE users SET status = 'INACTIVE' WHERE id = $1`, [deactivated.id]);
+
+        // Deactivated the way an admin does it.
+        const deactivatedByAdmin = await inviteUser();
+        const deactivatedByAdminToken = await readInvitationToken(deactivatedByAdmin.email);
+        await request('PATCH', `/users/${deactivatedByAdmin.id}/status`, { token: admin.token, body: { status: 'INACTIVE' } });
+
+        const deadTokens = [usedToken, replacedToken, expiredToken, deactivatedToken, deactivatedByAdminToken, 'not-a-real-token'];
+
+        for (const token of deadTokens) {
+            expectError(await verify({ token }), 400, 'INVALID_INVITATION');
+        }
+    });
+
+    it('answers 400 VALIDATION_ERROR for an empty or missing token', async () => {
+        for (const body of [{ token: '' }, {}]) {
+            const error = expectError(await verify(body), 400, 'VALIDATION_ERROR');
+
+            expect(error.details?.[0]?.field).toBe('token');
+        }
+    });
+
+    // The invited user has no session: the route must be public, and an unknown token must not look like
+    // a sign-in problem (401 would make the UI redirect to sign-in).
+    it('needs no cookie and never answers 401', async () => {
+        const response = await verify({ token: 'not-a-real-token' });
+
+        expect(response.status).not.toBe(401);
+        expectError(response, 400, 'INVALID_INVITATION');
     });
 });
 
