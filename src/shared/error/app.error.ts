@@ -14,6 +14,8 @@ export const ERROR_CODE = {
     INVALID_INVITATION: 'INVALID_INVITATION',
     CONFLICT: 'CONFLICT',
     PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+    // 429: a rate limit (src/app/rate-limit.ts); Retry-After says when to try again.
+    TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
     INTERNAL_ERROR: 'INTERNAL_ERROR',
     SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
     // 502: the SMTP server refused or couldn't be reached. The data change before it is already saved.

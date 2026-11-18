@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { suiteRunController } from './suite-run.controller.js';
@@ -11,6 +12,8 @@ import {
     suiteRunSuiteParamsSchema,
 } from './suite-run.request.dto.js';
 import { suiteRunDetailsResponseSchema, suiteRunPageResponseSchema } from './suite-run.response.dto.js';
+
+const rateLimitedResponse = tooManyRequestsResponse(RATE_LIMIT.TEST_EXECUTION, 'user', 'test execution');
 
 const { TEST_EXECUTION } = RESOURCE_CODE;
 const { CREATE, READ } = PERMISSION_CODE;
@@ -49,6 +52,7 @@ openApiRegistry.registerPath({
         201: { description: 'The new run (suite report)', content: jsonContent(suiteRunDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: errorResponse('Missing permission TEST_EXECUTION CREATE, or TEST_ASSIGNMENT CREATE when assigning to someone else'),
         404: suiteNotFoundResponse,
         409: errorResponse('The suite has no test cases'),
@@ -65,6 +69,7 @@ openApiRegistry.registerPath({
         200: { description: 'A page of suite runs', content: jsonContent(suiteRunPageResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(READ),
         404: suiteNotFoundResponse,
     },
@@ -81,6 +86,7 @@ openApiRegistry.registerPath({
         200: { description: 'The suite report', content: jsonContent(suiteRunDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(READ),
         404: errorResponse('Project or suite run not found (or the caller is not a member of the project)'),
     },

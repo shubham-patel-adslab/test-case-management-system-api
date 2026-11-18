@@ -1,12 +1,15 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { attachmentController } from './attachment.controller.js';
 import { attachmentExecutionParamsSchema, attachmentIdParamsSchema, attachmentUploadRequestSchema } from './attachment.request.dto.js';
 import { attachmentListResponseSchema } from './attachment.response.dto.js';
 import { receiveAttachmentFiles } from './attachment.upload.js';
+
+const rateLimitedResponse = tooManyRequestsResponse(RATE_LIMIT.TEST_EXECUTION, 'user', 'test execution');
 
 const { TEST_EXECUTION } = RESOURCE_CODE;
 
@@ -44,6 +47,7 @@ openApiRegistry.registerPath({
         201: { description: 'The uploaded attachments', content: jsonContent(attachmentListResponseSchema) },
         400: errorResponse('No file, more than 5, an unexpected field, or an unsupported type'),
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: errorResponse('Missing permission TEST_EXECUTION UPDATE (code FORBIDDEN)'),
         404: errorResponse('Project or test execution not found (or the caller is not a member of the project)'),
         409: errorResponse('The execution is still PENDING'),
@@ -62,6 +66,7 @@ openApiRegistry.registerPath({
         200: { description: 'The file', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
         400: errorResponse('Invalid request'),
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: errorResponse('Missing permission TEST_EXECUTION READ (code FORBIDDEN)'),
         404: errorResponse('Project or attachment not found (or the caller is not a member of the project)'),
     },

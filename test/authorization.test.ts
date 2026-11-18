@@ -98,6 +98,7 @@ describe('GET /authorization/me — role and permissions from the database', () 
         expect(context.role).toEqual({ code: 'ADMIN', name: 'Admin' });
         expect(context.permissions).toEqual({
             ALL_PROJECTS: ['DELETE', 'READ', 'UPDATE'],
+            ANALYTICS: ['READ'],
             PROJECT: PROJECT_PERMISSIONS_BY_ROLE.ADMIN,
             TEST_CASE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,
             TEST_SUITE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,
@@ -113,6 +114,7 @@ describe('GET /authorization/me — role and permissions from the database', () 
 
             expect(context.role.code).toBe(roleCode);
             expect(context.permissions).toEqual({
+                ANALYTICS: ['READ'],
                 PROJECT: PROJECT_PERMISSIONS_BY_ROLE[roleCode],
                 TEST_CASE: TEST_CONTENT_PERMISSIONS_BY_ROLE[roleCode],
                 TEST_SUITE: TEST_CONTENT_PERMISSIONS_BY_ROLE[roleCode],

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { testCaseController } from './test-case.controller.js';
@@ -17,6 +18,8 @@ import {
     testCaseDetailsResponseSchema,
     testCasePageResponseSchema,
 } from './test-case.response.dto.js';
+
+const rateLimitedResponse = tooManyRequestsResponse(RATE_LIMIT.TEST_CASE, 'user', 'test case');
 
 const { TEST_CASE } = RESOURCE_CODE;
 const { CREATE, DELETE, READ, UPDATE } = PERMISSION_CODE;
@@ -59,6 +62,7 @@ openApiRegistry.registerPath({
         200: { description: 'A page of test cases', content: jsonContent(testCasePageResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(READ),
         404: projectNotFoundResponse,
     },
@@ -75,6 +79,7 @@ openApiRegistry.registerPath({
         201: { description: 'Created test case', content: jsonContent(testCaseDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(CREATE),
         404: projectNotFoundResponse,
     },
@@ -93,6 +98,7 @@ openApiRegistry.registerPath({
         200: { description: 'How many test cases were affected', content: jsonContent(testCaseBulkResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: errorResponse('Missing permission TEST_CASE UPDATE, or TEST_CASE DELETE for the DELETE action (code FORBIDDEN)'),
         404: projectNotFoundResponse,
     },
@@ -108,6 +114,7 @@ openApiRegistry.registerPath({
         200: { description: 'The test case', content: jsonContent(testCaseDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(READ),
         404: notFoundResponse,
     },
@@ -124,6 +131,7 @@ openApiRegistry.registerPath({
         200: { description: 'Updated test case', content: jsonContent(testCaseDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(UPDATE),
         404: notFoundResponse,
     },
@@ -139,6 +147,7 @@ openApiRegistry.registerPath({
         204: { description: 'Deleted' },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(DELETE),
         404: notFoundResponse,
     },

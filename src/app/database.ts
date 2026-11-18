@@ -53,6 +53,16 @@ export async function withTransaction<T>(work: (client: pg.PoolClient) => Promis
     }
 }
 
+// A read-only transaction whose queries all see the same snapshot (REPEATABLE READ): several aggregates read
+// one after another still add up, even while results are being recorded. SET TRANSACTION must come first.
+export async function withSnapshot<T>(work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    return withTransaction(async (client) => {
+        await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+
+        return work(client);
+    });
+}
+
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 

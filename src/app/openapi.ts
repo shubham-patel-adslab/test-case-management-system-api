@@ -32,6 +32,15 @@ export function errorResponse(description: string) {
     return { description, content: jsonContent(errorResponseSchema) };
 }
 
+// The 429 of a rate-limited route (src/app/rate-limit.ts; which routes: api.router.ts).
+export function tooManyRequestsResponse(policy: { limit: number; windowMs: number }, key: 'user' | 'IP', group: string) {
+    const minutes = policy.windowMs / 60_000;
+    const window = minutes % 60 === 0 ? `${minutes / 60} hour(s)` : `${minutes} minutes`;
+
+    return errorResponse(`Rate limit exceeded: ${policy.limit} ${group} requests per ${window} per ${key} (code `
+        + 'TOO_MANY_REQUESTS). Retry-After: seconds until it resets; RateLimit-* headers on every response of the group.');
+}
+
 // Must be called after every feature module has been imported (i.e. after their registerPath calls
 // ran), which is why this is a function rather than a document built at import time.
 export function createDocsRouter(): Router {

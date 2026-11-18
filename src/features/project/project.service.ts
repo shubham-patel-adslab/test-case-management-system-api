@@ -143,6 +143,12 @@ export const projectService = {
         }
     },
 
+    // The projects the caller may read: null = every project, else only their own. For queries across
+    // projects (analytics) that filter by scope in SQL.
+    async getReadScope(authUser: AuthUser): Promise<ProjectScope> {
+        return scopeOf(authUser, PERMISSION_CODE.READ);
+    },
+
     // Whether a given user (not necessarily the caller) may act on the project with `permission` — e.g.
     // whether a test case can be assigned to them.
     async canAccess(userId: string, projectId: number, permission: PermissionCode): Promise<boolean> {

@@ -42,6 +42,7 @@ const server = app.listen(env.PORT, (error) => {
     console.info(`TCMS API listening on port ${env.PORT} (${env.NODE_ENV})`);
     console.info(`  Docs:   ${baseUrl}/docs`);
     console.info(`  Health: ${baseUrl}/health`);
+    console.info(`  Rate limiting: ${env.RATE_LIMIT_ENABLED ? 'on' : 'OFF (RATE_LIMIT_ENABLED=false)'}`);
 });
 
 function closeServer(httpServer: Server): Promise<void> {

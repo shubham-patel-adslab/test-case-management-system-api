@@ -18,6 +18,12 @@ const envSchema = z.object({
     // Directory for uploaded attachments (relative to the working directory, or absolute). Outside any public
     // folder: files are served only through the authorized download route. On a server, a persistent volume.
     UPLOAD_DIR: z.string().trim().min(1),
+    // The PRD's rate limits (src/app/rate-limit.ts). On unless turned off, so a server can't run without them by
+    // forgetting a variable; local development and tests set false.
+    RATE_LIMIT_ENABLED: z.stringbool().default(true),
+    // How many proxies in front of the API to trust for the client IP (X-Forwarded-For), which the sign-in limit
+    // is keyed by. 0 = none (direct connections, local development). Too high lets a client choose its own IP.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
 });
 
 export type Env = z.infer<typeof envSchema>;

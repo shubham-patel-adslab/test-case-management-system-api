@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { analyticsRouter } from '../features/analytics/analytics.routes.js';
 import { attachmentRouter, executionAttachmentRouter } from '../features/attachment/attachment.routes.js';
 import { authenticate } from '../features/authentication/authentication.middleware.js';
 import { authenticationRouter } from '../features/authentication/authentication.routes.js';
@@ -15,8 +16,22 @@ import { testExecutionRouter } from '../features/test-execution/test-execution.r
 import { testSuiteRouter } from '../features/test-suite/test-suite.routes.js';
 import { userRouter } from '../features/user/user.routes.js';
 import { createDocsRouter } from './openapi.js';
+import { analyticsRateLimit, authRateLimit, testCaseRateLimit, testExecutionRateLimit } from './rate-limit.js';
+
+// Everything that executes tests or reads their results counts toward the execution limit (PRD: "test execution
+// endpoints"): executions with their defects and attachments, suite runs, downloads.
+const TEST_EXECUTION_PATHS = [
+    '/projects/:projectId/test-executions',
+    '/projects/:projectId/test-suites/:suiteId/runs',
+    '/projects/:projectId/suite-runs',
+    '/projects/:projectId/attachments',
+];
 
 export const apiRouter = Router();
+
+// Rate limits (PRD Backend Req §2, api-requirements §7) sit in front of the routes they cover, so the whole policy
+// is in this file. Sign-in and accepting an invitation share one budget per IP; /auth/me and sign-out aren't limited.
+apiRouter.post(['/auth/sign-in', '/invitations/accept'], authRateLimit);
 
 // Mounted before the global `authenticate`. Health, docs, sign-in, sign-out and checking or accepting an
 // invitation are public; /auth/me authenticates per route. The docs can be built here already: the imports above ran every feature's
@@ -31,9 +46,15 @@ apiRouter.use(createDocsRouter());
 // permission) — live on each route in the feature's routes file.
 apiRouter.use(authenticate);
 
+// Per user, so after authenticate. Projects, suites, users and roles have no PRD limit.
+apiRouter.use('/analytics', analyticsRateLimit);
+apiRouter.use('/projects/:projectId/test-cases', testCaseRateLimit);
+apiRouter.use(TEST_EXECUTION_PATHS, testExecutionRateLimit);
+
 apiRouter.use('/authorization', authorizationRouter);
 apiRouter.use('/users', userRouter);
 apiRouter.use('/roles', roleRouter);
+apiRouter.use('/analytics', analyticsRouter);
 // Project-scoped features: nested under their project, so every request names it (api-requirements §2).
 apiRouter.use('/projects/:projectId/test-cases', testCaseRouter);
 apiRouter.use('/projects/:projectId/test-suites/:suiteId/runs', testSuiteRunRouter);

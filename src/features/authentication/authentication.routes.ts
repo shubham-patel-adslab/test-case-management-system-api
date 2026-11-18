@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { ACCESS_TOKEN_COOKIE_NAME } from './authentication.constant.js';
 import { authenticationController } from './authentication.controller.js';
 import { authenticate } from './authentication.middleware.js';
@@ -16,6 +17,7 @@ authenticationRouter.post('/sign-out', authenticationController.signOut);
 authenticationRouter.get('/me', authenticate, authenticationController.getCurrentUser);
 
 const TAGS = ['Authentication'];
+const authRateLimitedResponse = tooManyRequestsResponse(RATE_LIMIT.AUTH, 'IP', 'sign-in and invitation-accept');
 
 openApiRegistry.registerPath({
     method: 'post',
@@ -30,6 +32,7 @@ openApiRegistry.registerPath({
         400: errorResponse('Invalid request'),
         401: errorResponse('Invalid email or password (code INVALID_CREDENTIALS)'),
         403: errorResponse('Correct password but the account is deactivated (code ACCOUNT_INACTIVE)'),
+        429: authRateLimitedResponse,
     },
 });
 

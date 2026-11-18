@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { testExecutionController } from './test-execution.controller.js';
@@ -20,6 +21,8 @@ import {
     testExecutionPageResponseSchema,
     testExecutionProgressResponseSchema,
 } from './test-execution.response.dto.js';
+
+const rateLimitedResponse = tooManyRequestsResponse(RATE_LIMIT.TEST_EXECUTION, 'user', 'test execution');
 
 const { TEST_ASSIGNMENT, TEST_EXECUTION } = RESOURCE_CODE;
 const { CREATE, READ, UPDATE } = PERMISSION_CODE;
@@ -66,6 +69,7 @@ openApiRegistry.registerPath({
         200: { description: 'A page of executions', content: jsonContent(testExecutionPageResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, READ),
         404: projectNotFoundResponse,
     },
@@ -81,6 +85,7 @@ openApiRegistry.registerPath({
         200: { description: 'Counts per status', content: jsonContent(testExecutionProgressResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, READ),
         404: projectNotFoundResponse,
     },
@@ -99,6 +104,7 @@ openApiRegistry.registerPath({
         201: { description: 'How many executions were created', content: jsonContent(testExecutionAssignResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_ASSIGNMENT, CREATE),
         404: projectNotFoundResponse,
     },
@@ -115,6 +121,7 @@ openApiRegistry.registerPath({
         201: { description: 'The recorded execution', content: jsonContent(testExecutionDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, CREATE),
         404: projectNotFoundResponse,
     },
@@ -131,6 +138,7 @@ openApiRegistry.registerPath({
         200: { description: 'The execution', content: jsonContent(testExecutionDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, READ),
         404: notFoundResponse,
     },
@@ -148,6 +156,7 @@ openApiRegistry.registerPath({
         200: { description: 'The recorded execution', content: jsonContent(testExecutionDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, UPDATE),
         404: notFoundResponse,
         409: errorResponse('The result is already recorded'),
@@ -164,6 +173,7 @@ openApiRegistry.registerPath({
         200: { description: 'The audit entries', content: jsonContent(testExecutionAuditLogListResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
+        429: rateLimitedResponse,
         403: forbiddenResponse(TEST_EXECUTION, READ),
         404: notFoundResponse,
     },
