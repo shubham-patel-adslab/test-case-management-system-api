@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { CACHE_STATUS_HEADER } from '../../app/cache.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { parseRequest } from '../../shared/request/parse-request.js';
 import { getAuthUser } from '../authentication/authentication.middleware.js';
@@ -23,7 +24,9 @@ export const projectController = {
     async getById(req: Request, res: Response): Promise<void> {
         const { projectId } = parseRequest(projectIdParamsSchema, req.params);
 
-        res.json(await projectService.getById(getAuthUser(req), projectId));
+        const { value, cacheStatus } = await projectService.getById(getAuthUser(req), projectId);
+
+        res.set(CACHE_STATUS_HEADER, cacheStatus).json(value);
     },
 
     async create(req: Request, res: Response): Promise<void> {

@@ -99,6 +99,7 @@ describe('GET /authorization/me — role and permissions from the database', () 
         expect(context.permissions).toEqual({
             ALL_PROJECTS: ['DELETE', 'READ', 'UPDATE'],
             ANALYTICS: ['READ'],
+            METRICS: ['READ'],
             PROJECT: PROJECT_PERMISSIONS_BY_ROLE.ADMIN,
             TEST_CASE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,
             TEST_SUITE: TEST_CONTENT_PERMISSIONS_BY_ROLE.ADMIN,

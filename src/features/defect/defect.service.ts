@@ -1,4 +1,4 @@
-import { withTransaction } from '../../app/database.js';
+import { CACHE_POLICY, withProjectWrite } from '../../app/cache.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
 import { projectService } from '../project/project.service.js';
@@ -9,12 +9,15 @@ import { defectRepository } from './defect.repository.js';
 import type { DefectCreateRequestDto } from './defect.request.dto.js';
 import type { DefectDetailsResponseDto } from './defect.response.dto.js';
 
+// Defects are counted on the dashboard.
+const DEFECT_CACHES = [CACHE_POLICY.ANALYTICS];
+
 // PRD Features §4 "Create defects/bugs directly from failed tests".
 export const defectService = {
     // Only from a FAIL (a recorded result never changes, so no lock is needed to keep it FAIL), one per
     // execution (atomic ON CONFLICT). The defect and its audit entry are one transaction.
     async create(authUser: AuthUser, projectId: number, executionId: number, request: DefectCreateRequestDto): Promise<DefectDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, DEFECT_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             const execution = await testExecutionRepository.selectById(projectId, executionId, client);

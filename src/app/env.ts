@@ -24,6 +24,13 @@ const envSchema = z.object({
     // How many proxies in front of the API to trust for the client IP (X-Forwarded-For), which the sign-in limit
     // is keyed by. 0 = none (direct connections, local development). Too high lets a client choose its own IP.
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+    // Redis caching (src/app/cache.ts). On unless turned off, like the rate limits; then REDIS_URL is required, so a
+    // server can't silently run without its cache. Redis being down at runtime only bypasses the cache.
+    CACHE_ENABLED: z.stringbool().default(true),
+    REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
+}).refine((config) => !config.CACHE_ENABLED || config.REDIS_URL !== undefined, {
+    path: ['REDIS_URL'],
+    message: 'Required while CACHE_ENABLED is true (set CACHE_ENABLED=false to run without Redis)',
 });
 
 export type Env = z.infer<typeof envSchema>;

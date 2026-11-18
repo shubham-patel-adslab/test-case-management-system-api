@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { CACHE_STATUS_HEADER } from '../../app/cache.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { parseRequest } from '../../shared/request/parse-request.js';
 import { getAuthUser } from '../authentication/authentication.middleware.js';
@@ -22,7 +23,9 @@ export const testSuiteController = {
         const { projectId } = parseRequest(testSuiteProjectParamsSchema, req.params);
         const request = parseRequest(testSuitePageRequestSchema, req.query);
 
-        res.json(await testSuiteService.getPage(getAuthUser(req), projectId, request));
+        const { value, cacheStatus } = await testSuiteService.getPage(getAuthUser(req), projectId, request);
+
+        res.set(CACHE_STATUS_HEADER, cacheStatus).json(value);
     },
 
     async getById(req: Request, res: Response): Promise<void> {

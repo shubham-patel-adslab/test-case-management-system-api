@@ -32,6 +32,15 @@ export function errorResponse(description: string) {
     return { description, content: jsonContent(errorResponseSchema) };
 }
 
+// On the 200 of a cached endpoint (src/app/cache.ts).
+export const cacheStatusHeaders = {
+    'X-Cache': {
+        description: 'HIT = served from the cache; MISS = loaded from the database and cached; BYPASS = caching off or '
+            + 'Redis unreachable (loaded from the database)',
+        schema: { type: 'string' as const, enum: ['HIT', 'MISS', 'BYPASS'] },
+    },
+};
+
 // The 429 of a rate-limited route (src/app/rate-limit.ts; which routes: api.router.ts).
 export function tooManyRequestsResponse(policy: { limit: number; windowMs: number }, key: 'user' | 'IP', group: string) {
     const minutes = policy.windowMs / 60_000;

@@ -1,9 +1,10 @@
+import { CACHE_POLICY, readThrough, type Cached } from '../../app/cache.js';
 import { withSnapshot } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
 import { projectService } from '../project/project.service.js';
 import { TIME_ZONE_INVALID_MESSAGE } from './analytics.constant.js';
-import { toAnalyticsResponseDto } from './analytics.mapper.js';
+import { toAnalyticsResponseDto, type AnalyticsData } from './analytics.mapper.js';
 import { analyticsRepository, type AnalyticsFilter } from './analytics.repository.js';
 import type { AnalyticsRequestDto } from './analytics.request.dto.js';
 import type { AnalyticsResponseDto } from './analytics.response.dto.js';
@@ -51,7 +52,12 @@ export const analyticsService = {
     // The dashboard over every project the caller may read (ADMIN: all; others: their own), or one of them.
     // A project outside the scope is a 404, like everywhere else. One snapshot, so the summary, trend and
     // per-tester numbers agree with each other even while results are being recorded.
-    async get(authUser: AuthUser, request: AnalyticsRequestDto): Promise<AnalyticsResponseDto> {
+    //
+    // Cached 15 minutes (PRD). The entry depends on every project the dashboard covers, so a write to any of them
+    // invalidates it, and a change of team gives a different set of projects — a different entry. Cached: the
+    // query results, not the response, so each response echoes its own request (`range.timeZone` as sent; Asia/
+    // Calcutta and Asia/Kolkata share one entry).
+    async get(authUser: AuthUser, request: AnalyticsRequestDto): Promise<Cached<AnalyticsResponseDto>> {
         // A bad request is a 400 before anything else, as when the schema rejects it.
         const timeZone = await resolveTimeZone(request.timeZone);
 
@@ -59,23 +65,27 @@ export const analyticsService = {
             await projectService.assertReadable(authUser, request.projectId);
         }
 
-        const filter: AnalyticsFilter = {
-            scope: await projectService.getReadScope(authUser),
-            projectId: request.projectId,
-            from: request.from,
-            to: request.to,
-            timeZone,
-        };
+        const scope = await projectService.getReadScope(authUser);
+        const projectIds = request.projectId === undefined ? await projectService.getIdsInScope(scope) : [request.projectId];
+        const filter: AnalyticsFilter = { scope, projectId: request.projectId, from: request.from, to: request.to, timeZone };
 
-        // One after another: a transaction is one connection, which runs one query at a time anyway.
-        const data = await withSnapshot(async (client) => ({
-            breakdown: await analyticsRepository.selectExecutionBreakdown(filter, client),
-            trend: await analyticsRepository.selectTrend(filter, client),
-            testers: await analyticsRepository.selectTesters(filter, client),
-            totals: await analyticsRepository.selectTotals(filter, client),
-        }));
+        const { value, cacheStatus } = await readThrough(
+            CACHE_POLICY.ANALYTICS,
+            projectIds,
+            JSON.stringify({ from: request.from, to: request.to, timeZone }),
+            async () => ({
+                // One after another: a transaction is one connection, which runs one query at a time anyway.
+                data: await withSnapshot(async (client): Promise<AnalyticsData> => ({
+                    breakdown: await analyticsRepository.selectExecutionBreakdown(filter, client),
+                    trend: await analyticsRepository.selectTrend(filter, client),
+                    testers: await analyticsRepository.selectTesters(filter, client),
+                    totals: await analyticsRepository.selectTotals(filter, client),
+                })),
+                generatedAt: new Date().toISOString(),
+            }),
+        );
 
-        // The response echoes the name the request sent (`range.timeZone`), not the resolved one.
-        return toAnalyticsResponseDto(data, request, new Date());
+        // generatedAt is when the numbers were computed, so a cached answer says how old it is.
+        return { value: toAnalyticsResponseDto(value.data, request, new Date(value.generatedAt)), cacheStatus };
     },
 };

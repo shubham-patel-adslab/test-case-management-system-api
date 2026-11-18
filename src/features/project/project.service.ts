@@ -1,3 +1,4 @@
+import { CACHE_POLICY, invalidateProjectCaches, readThrough, type Cached } from '../../app/cache.js';
 import { isForeignKeyViolation, withTransaction, type Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
@@ -81,14 +82,21 @@ export const projectService = {
         return toPageResponseDto(items, request, totalItems);
     },
 
-    async getById(authUser: AuthUser, projectId: number): Promise<ProjectDetailsResponseDto> {
-        const row = await projectRepository.selectById(projectId, await scopeOf(authUser, PERMISSION_CODE.READ));
+    // Cached 1 hour (PRD "project metadata"), team included. Who may read it is checked on every request, before
+    // the cache; the cached value is the same for every reader.
+    async getById(authUser: AuthUser, projectId: number): Promise<Cached<ProjectDetailsResponseDto>> {
+        await projectService.assertReadable(authUser, projectId);
 
-        if (!row) {
-            throw projectNotFound();
-        }
+        return readThrough(CACHE_POLICY.PROJECT, [projectId], 'details', async () => {
+            const row = await projectRepository.selectById(projectId, null);
 
-        return toDetails(row);
+            // Deleted between the check and the load.
+            if (!row) {
+                throw projectNotFound();
+            }
+
+            return toDetails(row);
+        });
     },
 
     // The project and its team in one transaction: an invalid member id leaves no half-created project.
@@ -108,7 +116,7 @@ export const projectService = {
     async update(authUser: AuthUser, projectId: number, request: ProjectUpdateRequestDto): Promise<ProjectDetailsResponseDto> {
         const scope = await scopeOf(authUser, PERMISSION_CODE.UPDATE);
 
-        return withTransaction(async (client) => {
+        const project = await withTransaction(async (client) => {
             const row = await projectRepository.updateById(projectId, request, scope, client);
 
             if (!row) {
@@ -119,6 +127,10 @@ export const projectService = {
 
             return toDetails(row, client);
         });
+
+        await invalidateProjectCaches([CACHE_POLICY.PROJECT], [projectId]);
+
+        return project;
     },
 
     // The database refuses to delete a project that still has test cases, suites or execution history (ON
@@ -141,12 +153,24 @@ export const projectService = {
         if (!isDeleted) {
             throw projectNotFound();
         }
+
+        await invalidateProjectCaches(Object.values(CACHE_POLICY), [projectId]);
     },
 
     // The projects the caller may read: null = every project, else only their own. For queries across
     // projects (analytics) that filter by scope in SQL.
     async getReadScope(authUser: AuthUser): Promise<ProjectScope> {
         return scopeOf(authUser, PERMISSION_CODE.READ);
+    },
+
+    async getIdsInScope(scope: ProjectScope): Promise<number[]> {
+        return projectRepository.selectIdsInScope(scope);
+    },
+
+    // A user's name, email, role or status changed: the cached data of their projects shows them (the team in
+    // project details, testers in analytics).
+    async invalidateCachesOfMember(userId: string): Promise<void> {
+        await invalidateProjectCaches([CACHE_POLICY.PROJECT, CACHE_POLICY.ANALYTICS], await projectRepository.selectIdsByMember(userId));
     },
 
     // Whether a given user (not necessarily the caller) may act on the project with `permission` — e.g.

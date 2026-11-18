@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { cacheStatusHeaders, errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { testSuiteController } from './test-suite.controller.js';
@@ -53,7 +53,7 @@ openApiRegistry.registerPath({
     summary: 'List test suites of a project (paginated, by name)',
     request: { params: testSuiteProjectParamsSchema, query: testSuitePageRequestSchema },
     responses: {
-        200: { description: 'A page of test suites', content: jsonContent(testSuitePageResponseSchema) },
+        200: { description: 'A page of test suites', headers: cacheStatusHeaders, content: jsonContent(testSuitePageResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
         403: forbiddenResponse(READ),

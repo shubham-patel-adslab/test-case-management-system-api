@@ -100,6 +100,20 @@ export const projectRepository = {
         return result.rows[0];
     },
 
+    // The ids of every project in the scope — what a cross-project cached value (analytics) depends on.
+    async selectIdsInScope(scope: ProjectScope): Promise<number[]> {
+        const result = await pool.query<{ id: number }>(`SELECT p.id FROM projects p WHERE ${isInScope('$1')}`, [scope]);
+
+        return result.rows.map((row) => row.id);
+    },
+
+    // The projects a user is on the team of (idx_project_members_user_id) — the cached project data that shows them.
+    async selectIdsByMember(userId: string): Promise<number[]> {
+        const result = await pool.query<{ project_id: number }>('SELECT project_id FROM project_members WHERE user_id = $1', [userId]);
+
+        return result.rows.map((row) => row.project_id);
+    },
+
     // For work inside a project (test cases, suites): does it exist in the caller's scope? `isLocked` (inside a
     // transaction) takes FOR KEY SHARE on the project row until the transaction ends: the project can't be
     // deleted meanwhile, while edits of the project itself aren't blocked.

@@ -12,6 +12,7 @@ export const RESOURCE_CODE = {
     TEST_ASSIGNMENT: 'TEST_ASSIGNMENT',
     DEFECT: 'DEFECT',
     ANALYTICS: 'ANALYTICS',
+    METRICS: 'METRICS',
 } as const;
 
 export const PERMISSION_CODE = {

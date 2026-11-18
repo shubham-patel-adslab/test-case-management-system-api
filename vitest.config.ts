@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 // The same .env as the app, through Node's built-in loader (no dotenv). Loaded here, before Vitest starts
 // its workers, so every test file inherits it; variables already set win, like `node --env-file`.
 process.loadEnvFile('.env');
+// Tests sign in, create and list far more than the PRD's limits allow, so they run without them whatever .env
+// says; test/rate-limit.test.ts turns them on for itself.
+process.env['RATE_LIMIT_ENABLED'] = 'false';
 
 export default defineConfig({
     test: {

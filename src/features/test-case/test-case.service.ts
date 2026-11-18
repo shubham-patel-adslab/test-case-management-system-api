@@ -1,4 +1,5 @@
-import { withTransaction, type Queryable } from '../../app/database.js';
+import { CACHE_POLICY, withProjectWrite } from '../../app/cache.js';
+import type { Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
@@ -21,6 +22,9 @@ import type {
     TestCaseDetailsResponseDto,
     TestCasePageResponseDto,
 } from './test-case.response.dto.js';
+
+// Test case writes change the dashboard (coverage, by priority/type) and the suites' test case counts.
+const TEST_CASE_CACHES = [CACHE_POLICY.ANALYTICS, CACHE_POLICY.TEST_SUITE_LIST];
 
 function testCaseNotFound(): AppError {
     return new AppError(404, ERROR_CODE.NOT_FOUND, 'Test case not found');
@@ -117,7 +121,7 @@ export const testCaseService = {
     // The test case, its steps and its suite memberships in one transaction: a bad suite id leaves nothing
     // half-created.
     async create(authUser: AuthUser, projectId: number, request: TestCaseCreateRequestDto): Promise<TestCaseDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, TEST_CASE_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await lockSuites(projectId, request.suiteIds, client);
 
@@ -132,7 +136,7 @@ export const testCaseService = {
 
     // Full replacement, steps and suites included.
     async update(authUser: AuthUser, projectId: number, testCaseId: number, request: TestCaseUpdateRequestDto): Promise<TestCaseDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, TEST_CASE_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await lockSuites(projectId, request.suiteIds, client);
 
@@ -157,7 +161,7 @@ export const testCaseService = {
             await authorizationService.assertPermission(authUser.id, RESOURCE_CODE.TEST_CASE, PERMISSION_CODE.DELETE);
         }
 
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, TEST_CASE_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             if (request.action === TEST_CASE_BULK_ACTION.ASSIGN_TO_SUITE) {
@@ -195,7 +199,7 @@ export const testCaseService = {
     // test case is locked first, so an assignment can't add a pending execution between the two deletes (lock
     // order: test case → executions, as everywhere).
     async delete(authUser: AuthUser, projectId: number, testCaseId: number): Promise<void> {
-        await withTransaction(async (client) => {
+        await withProjectWrite(projectId, TEST_CASE_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             if ((await testCaseRepository.lockIdsInProject(projectId, [testCaseId], client)).length === 0) {

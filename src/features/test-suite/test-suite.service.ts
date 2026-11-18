@@ -1,4 +1,5 @@
-import { isUniqueViolation, withTransaction, type Queryable } from '../../app/database.js';
+import { CACHE_POLICY, readThrough, withProjectWrite, type Cached } from '../../app/cache.js';
+import { isUniqueViolation, type Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
@@ -14,6 +15,9 @@ import type {
     TestSuiteUpdateRequestDto,
 } from './test-suite.request.dto.js';
 import type { TestSuiteDetailsResponseDto, TestSuitePageResponseDto } from './test-suite.response.dto.js';
+
+// Suite writes change the project's suite list (names, test case counts).
+const SUITE_LIST_CACHES = [CACHE_POLICY.TEST_SUITE_LIST];
 
 const NAME_TAKEN_MESSAGE = 'The project already has a test suite with this name';
 
@@ -55,16 +59,19 @@ async function getDetails(projectId: number, suiteId: number, db?: Queryable): P
 // within that project. Lock order in writes: project → suite → test cases (same as the test case feature),
 // so they can't deadlock with each other.
 export const testSuiteService = {
-    async getPage(authUser: AuthUser, projectId: number, request: TestSuitePageRequestDto): Promise<TestSuitePageResponseDto> {
+    // Cached 30 minutes (PRD), one entry per page/sort; any suite or test case write in the project invalidates it.
+    async getPage(authUser: AuthUser, projectId: number, request: TestSuitePageRequestDto): Promise<Cached<TestSuitePageResponseDto>> {
         await projectService.assertReadable(authUser, projectId);
 
-        const offset = (request.page - 1) * request.pageSize;
-        const [rows, totalItems] = await Promise.all([
-            testSuiteRepository.selectPage(projectId, request.sort, request.pageSize, offset),
-            testSuiteRepository.count(projectId),
-        ]);
+        return readThrough(CACHE_POLICY.TEST_SUITE_LIST, [projectId], JSON.stringify(request), async () => {
+            const offset = (request.page - 1) * request.pageSize;
+            const [rows, totalItems] = await Promise.all([
+                testSuiteRepository.selectPage(projectId, request.sort, request.pageSize, offset),
+                testSuiteRepository.count(projectId),
+            ]);
 
-        return toPageResponseDto(rows.map(toTestSuiteSummaryResponseDto), request, totalItems);
+            return toPageResponseDto(rows.map(toTestSuiteSummaryResponseDto), request, totalItems);
+        });
     },
 
     async getById(authUser: AuthUser, projectId: number, suiteId: number): Promise<TestSuiteDetailsResponseDto> {
@@ -74,7 +81,7 @@ export const testSuiteService = {
     },
 
     async create(authUser: AuthUser, projectId: number, request: TestSuiteCreateRequestDto): Promise<TestSuiteDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             const suiteId = await testSuiteRepository.insert(projectId, request, authUser.id, client);
@@ -88,7 +95,7 @@ export const testSuiteService = {
     },
 
     async update(authUser: AuthUser, projectId: number, suiteId: number, request: TestSuiteUpdateRequestDto): Promise<TestSuiteDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             try {
@@ -109,7 +116,7 @@ export const testSuiteService = {
 
     // The suite and its links; never its test cases (PRD / spec rule 7).
     async delete(authUser: AuthUser, projectId: number, suiteId: number): Promise<void> {
-        await withTransaction(async (client) => {
+        await withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             if (!(await testSuiteRepository.deleteById(projectId, suiteId, client))) {
@@ -121,7 +128,7 @@ export const testSuiteService = {
     // Appends several test cases in the order given, all-or-nothing: any id that isn't a test case of this
     // project rejects the request (400 on testCaseIds[i]). Cases already in the suite keep their position.
     async addTestCases(authUser: AuthUser, projectId: number, suiteId: number, request: TestSuiteCasesAddRequestDto): Promise<TestSuiteDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await lockSuite(projectId, suiteId, client);
             await testCaseService.lockInProject(projectId, request.testCaseIds, client);
@@ -135,7 +142,7 @@ export const testSuiteService = {
 
     // Only the link goes; the test case stays (PRD / spec rule 6). 404 if it wasn't in the suite.
     async removeTestCase(authUser: AuthUser, projectId: number, suiteId: number, testCaseId: number): Promise<void> {
-        await withTransaction(async (client) => {
+        await withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await lockSuite(projectId, suiteId, client);
 
@@ -148,7 +155,7 @@ export const testSuiteService = {
     // The new order must list every test case of the suite exactly once — the suite is locked, so its
     // content can't change between this check and the renumbering.
     async reorderTestCases(authUser: AuthUser, projectId: number, suiteId: number, request: TestSuiteCasesReorderRequestDto): Promise<TestSuiteDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, SUITE_LIST_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await lockSuite(projectId, suiteId, client);
 

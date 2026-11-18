@@ -1,4 +1,5 @@
-import { withTransaction, type Queryable } from '../../app/database.js';
+import { CACHE_POLICY, withProjectWrite } from '../../app/cache.js';
+import type { Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
@@ -14,6 +15,9 @@ import { toSuiteRunDetailsResponseDto, toSuiteRunSummaryResponseDto } from './su
 import { suiteRunRepository } from './suite-run.repository.js';
 import type { SuiteRunCreateRequestDto, SuiteRunPageRequestDto } from './suite-run.request.dto.js';
 import type { SuiteRunDetailsResponseDto, SuiteRunPageResponseDto } from './suite-run.response.dto.js';
+
+// A suite run adds pending executions: the dashboard's backlog.
+const EXECUTION_CACHES = [CACHE_POLICY.ANALYTICS];
 
 function testSuiteNotFound(): AppError {
     return new AppError(404, ERROR_CODE.NOT_FOUND, 'Test suite not found');
@@ -52,7 +56,7 @@ export const suiteRunService = {
             await authorizationService.assertPermission(authUser.id, RESOURCE_CODE.TEST_ASSIGNMENT, PERMISSION_CODE.CREATE);
         }
 
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, EXECUTION_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             if (assigneeId !== undefined) {

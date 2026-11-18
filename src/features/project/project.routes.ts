@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
+import { cacheStatusHeaders, errorResponse, jsonContent, openApiRegistry } from '../../app/openapi.js';
 import { authorize } from '../authorization/authorization.middleware.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { projectController } from './project.controller.js';
@@ -100,7 +100,7 @@ openApiRegistry.registerPath({
     description: SCOPE_DESCRIPTION,
     request: { params: projectIdParamsSchema },
     responses: {
-        200: { description: 'The project', content: jsonContent(projectDetailsResponseSchema) },
+        200: { description: 'The project', headers: cacheStatusHeaders, content: jsonContent(projectDetailsResponseSchema) },
         400: validationErrorResponse,
         401: unauthorizedResponse,
         403: forbiddenResponse(READ),

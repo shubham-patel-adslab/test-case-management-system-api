@@ -3,6 +3,7 @@ import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
 import { invitationService } from '../invitation/invitation.service.js';
+import { projectService } from '../project/project.service.js';
 import { USER_STATUS, type UserSettableStatus, type UserStatus } from './user.constant.js';
 import { toUserDetailsResponseDto } from './user.mapper.js';
 import { hashPassword } from './user.password.js';
@@ -172,6 +173,9 @@ export const userService = {
             throw error;
         }
 
+        // Before the email: if sending fails (502), the saved change must not be hidden behind a stale cache.
+        await projectService.invalidateCachesOfMember(userId);
+
         if (result.token) {
             await invitationService.send(result.user, result.token);
         }
@@ -186,7 +190,7 @@ export const userService = {
             throw selfChangeForbidden('status');
         }
 
-        return withTransaction(async (client) => {
+        const user = await withTransaction(async (client) => {
             if (!(await userRepository.updateStatusById(userId, status, client))) {
                 throw userNotFound();
             }
@@ -197,5 +201,10 @@ export const userService = {
 
             return getUserDetails(userId, client);
         });
+
+        // Project teams show each member's status.
+        await projectService.invalidateCachesOfMember(userId);
+
+        return user;
     },
 };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
+import { cacheStatusHeaders, errorResponse, jsonContent, openApiRegistry, tooManyRequestsResponse } from '../../app/openapi.js';
 import { RATE_LIMIT } from '../../app/rate-limit.js';
 import { PERMISSION_CODE, RESOURCE_CODE } from '../authorization/authorization.constant.js';
 import { authorize } from '../authorization/authorization.middleware.js';
@@ -30,7 +30,7 @@ openApiRegistry.registerPath({
         + 'defect density = defects.total / coverage.executedCases).',
     request: { query: analyticsRequestSchema },
     responses: {
-        200: { description: 'The dashboard data', content: jsonContent(analyticsResponseSchema) },
+        200: { description: 'The dashboard data', headers: cacheStatusHeaders, content: jsonContent(analyticsResponseSchema) },
         400: errorResponse('Invalid request (e.g. `to` before `from`, range over 366 days, unknown time zone)'),
         401: errorResponse('Missing, invalid or expired access-token cookie, or inactive account'),
         429: rateLimitedResponse,

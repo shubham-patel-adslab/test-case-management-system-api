@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 
 import { z } from 'zod';
 
+import { CACHE_POLICY, closeCache, connectCache, invalidateProjectCaches } from '../../app/cache.js';
 import { pool, withTransaction, type Queryable } from '../../app/database.js';
 import { deleteFile } from '../../app/file-storage.js';
 import type { AuthUser } from '../../features/authentication/authentication.middleware.js';
@@ -181,6 +182,9 @@ async function seedProject(project: DemoProject, users: DemoUsers, random: Rando
         }, random, client);
     });
 
+    // The history was written with SQL, past the services: invalidate like they would.
+    await invalidateProjectCaches(Object.values(CACHE_POLICY), [created.id]);
+
     return { testCases: testCases.length, ...counts };
 }
 
@@ -201,6 +205,9 @@ async function seedDemo(): Promise<void> {
         console.info('Deleting the existing demo data…');
         await deleteDemoData();
     }
+
+    // The services invalidate cached data as they write, like through the API.
+    await connectCache();
 
     const random = createRandom(RANDOM_SEED);
     const now = new Date();
@@ -230,4 +237,5 @@ try {
     process.exitCode = 1;
 } finally {
     await pool.end();
+    await closeCache();
 }

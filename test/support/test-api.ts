@@ -11,6 +11,7 @@ import { expect } from 'vitest';
 import type { z } from 'zod';
 
 import { app } from '../../src/app/app.js';
+import { closeCache, connectCache } from '../../src/app/cache.js';
 import { pool } from '../../src/app/database.js';
 import { deleteFile } from '../../src/app/file-storage.js';
 import { ACCESS_TOKEN_COOKIE_NAME } from '../../src/features/authentication/authentication.constant.js';
@@ -55,6 +56,8 @@ let server: Server | undefined;
 let baseUrl = '';
 
 export async function startTestServer(): Promise<void> {
+    // Like the server: with Redis configured, tests run with caching on, so every test also checks invalidation.
+    await connectCache();
     server = app.listen(0, TEST_HOST);
     await new Promise<void>((resolve) => server?.once('listening', resolve));
     baseUrl = `http://${TEST_HOST}:${(server.address() as AddressInfo).port}/api`;
@@ -63,6 +66,7 @@ export async function startTestServer(): Promise<void> {
 export async function stopTestServer(): Promise<void> {
     await new Promise<void>((resolve, reject) => server?.close((error) => (error ? reject(error) : resolve())));
     await pool.end();
+    await closeCache();
 }
 
 // The full URL of an API path, for requests the JSON helper doesn't cover (uploads, downloads).

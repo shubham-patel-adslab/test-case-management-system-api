@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 
 import { app } from './app/app.js';
+import { closeCache, connectCache } from './app/cache.js';
 import { checkDatabaseConnection, pool } from './app/database.js';
 import { env } from './app/env.js';
 import { authorizationService } from './features/authorization/authorization.service.js';
@@ -32,6 +33,14 @@ try {
     process.exit(1);
 }
 
+// Not fatal: without Redis every request reads the database (X-Cache: BYPASS), and ioredis keeps reconnecting.
+const cacheState = await connectCache();
+const CACHE_STATE_MESSAGE = {
+    disabled: 'OFF (CACHE_ENABLED=false)',
+    connected: 'on (Redis connected)',
+    unreachable: 'on, but Redis is unreachable — requests read the database until it is back',
+};
+
 const server = app.listen(env.PORT, (error) => {
     if (error) {
         console.error(`Cannot listen on port ${env.PORT}`, error);
@@ -43,6 +52,7 @@ const server = app.listen(env.PORT, (error) => {
     console.info(`  Docs:   ${baseUrl}/docs`);
     console.info(`  Health: ${baseUrl}/health`);
     console.info(`  Rate limiting: ${env.RATE_LIMIT_ENABLED ? 'on' : 'OFF (RATE_LIMIT_ENABLED=false)'}`);
+    console.info(`  Caching: ${CACHE_STATE_MESSAGE[cacheState]}`);
 });
 
 function closeServer(httpServer: Server): Promise<void> {
@@ -71,6 +81,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     try {
         await closeServer(server); // stops new connections, waits for in-flight requests
         await pool.end();
+        await closeCache();
         console.info('Shutdown complete');
     } catch (error) {
         console.error('Error during shutdown', error);

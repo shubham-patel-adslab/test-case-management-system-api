@@ -8,6 +8,7 @@ import { authorizationRouter } from '../features/authorization/authorization.rou
 import { defectRouter } from '../features/defect/defect.routes.js';
 import { healthRouter } from '../features/health/health.routes.js';
 import { invitationRouter } from '../features/invitation/invitation.routes.js';
+import { metricsRouter } from '../features/metrics/metrics.routes.js';
 import { projectRouter } from '../features/project/project.routes.js';
 import { roleRouter } from '../features/role/role.routes.js';
 import { suiteRunRouter, testSuiteRunRouter } from '../features/suite-run/suite-run.routes.js';
@@ -55,6 +56,7 @@ apiRouter.use('/authorization', authorizationRouter);
 apiRouter.use('/users', userRouter);
 apiRouter.use('/roles', roleRouter);
 apiRouter.use('/analytics', analyticsRouter);
+apiRouter.use('/metrics', metricsRouter);
 // Project-scoped features: nested under their project, so every request names it (api-requirements §2).
 apiRouter.use('/projects/:projectId/test-cases', testCaseRouter);
 apiRouter.use('/projects/:projectId/test-suites/:suiteId/runs', testSuiteRunRouter);

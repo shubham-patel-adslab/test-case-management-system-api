@@ -1,4 +1,5 @@
-import { withTransaction, type Queryable } from '../../app/database.js';
+import { CACHE_POLICY, withProjectWrite } from '../../app/cache.js';
+import type { Queryable } from '../../app/database.js';
 import { AppError, ERROR_CODE } from '../../shared/error/app.error.js';
 import { toPageResponseDto } from '../../shared/response/page.response.dto.js';
 import type { AuthUser } from '../authentication/authentication.middleware.js';
@@ -34,6 +35,9 @@ import type {
     TestExecutionPageResponseDto,
     TestExecutionProgressResponseDto,
 } from './test-execution.response.dto.js';
+
+// Execution writes change the dashboard.
+const EXECUTION_CACHES = [CACHE_POLICY.ANALYTICS];
 
 function executionNotFound(): AppError {
     return new AppError(404, ERROR_CODE.NOT_FOUND, 'Test execution not found');
@@ -170,7 +174,7 @@ export const testExecutionService = {
     // PRD "Assign test cases to testers": one PENDING execution per test case, all-or-nothing (any id not in
     // the project → 400 on testCaseIds[i]). Cases already pending for this assignee are skipped.
     async assign(authUser: AuthUser, projectId: number, request: TestExecutionAssignRequestDto): Promise<TestExecutionAssignResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, EXECUTION_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
             await testExecutionService.assertAssignable(request.assigneeId, projectId);
             await testCaseService.lockInProject(projectId, request.testCaseIds, client);
@@ -193,7 +197,7 @@ export const testExecutionService = {
 
     // Run a test case ad hoc: the execution is created with its result, title and steps snapshotted.
     async create(authUser: AuthUser, projectId: number, request: TestExecutionCreateRequestDto): Promise<TestExecutionDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, EXECUTION_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             const testCase = await testCaseRepository.selectById(projectId, request.testCaseId, client, true);
@@ -214,7 +218,7 @@ export const testExecutionService = {
     // Record the result of a PENDING execution — once (results are immutable; 409 afterwards). Any project
     // member who may execute can record it, not only the assignee (PRD §4, decided 2026-11-17).
     async recordResult(authUser: AuthUser, projectId: number, executionId: number, request: TestExecutionResultRequestDto): Promise<TestExecutionDetailsResponseDto> {
-        return withTransaction(async (client) => {
+        return withProjectWrite(projectId, EXECUTION_CACHES, async (client) => {
             await projectService.assertWritable(authUser, projectId, client);
 
             const execution = await testExecutionRepository.selectById(projectId, executionId, client);
