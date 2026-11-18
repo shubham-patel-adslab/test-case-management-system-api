@@ -156,7 +156,7 @@ Caching is on by default, and the API refuses to start without `REDIS_URL`, so t
 6. Check: open `https://<render-url>/api/health` → `{"status":"ok"}`, and `https://<render-url>/api/docs`.
 7. Give Claude the Render URL for Step 5.
 
-## Step 5 — UI deploy file [Claude]
+## Step 5 — UI deploy file [Claude] — done 2026-11-18 (API at `https://tcms-api.onrender.com`)
 
 `vercel.json` in the UI repo — forwards `/api/*` to the Render URL, and sends every other path to
 `index.html` so deep links like `/projects/5` work on refresh:
@@ -231,6 +231,11 @@ Open `https://<vercel-project>.vercel.app`:
   database rows stay, so downloads then fail. Fix when needed: an S3-compatible object store (Cloudflare R2
   or Backblaze B2, 10 GB free) behind `src/app/file-storage.ts`, plus the download path in the attachment
   service and controller (it serves a local file with `res.sendFile` today).
+- **The Brevo SMTP key expires** after its set lifetime (1 year) **or after 90 days without sending**. Then
+  invitations fail with `502 EMAIL_DELIVERY_FAILED`: generate a new key (Standard variant), rebuild
+  `SMTP_URL` (Step 3), update it on Render.
+- **Invitations may land in spam** while `MAIL_FROM` is a free address (Gmail). The fix is a domain you own,
+  authenticated in Brevo (SPF/DKIM DNS records), and `MAIL_FROM` on that domain — no code change.
 - **Deploys:** pushing to `main` redeploys both. **Migrations are not automatic** — run Step 2.6 against
   Neon before pushing code that needs a new migration.
 
@@ -244,6 +249,7 @@ Open `https://<vercel-project>.vercel.app`:
 | `/api/health` → `503` | `DATABASE_URL` wrong, or the pooled Neon URL instead of the direct one |
 | `X-Cache: BYPASS` on every request | `REDIS_URL` wrong, or `redis://` instead of `rediss://` (Upstash requires TLS) |
 | Sign-in → `429` for everyone | `TRUST_PROXY_HOPS` too low — Step 7.7 |
-| Invitation → `502 EMAIL_DELIVERY_FAILED` | `SMTP_URL` port not 2525, `@` in the login not encoded, or `MAIL_FROM` not a verified sender |
+| Invitation → `502 EMAIL_DELIVERY_FAILED` | `SMTP_URL` port not 2525, `@` in the login not encoded, `MAIL_FROM` not a verified sender, phone not verified in Brevo, or the SMTP key expired (1 year, or 90 days unused) |
+| Invitation sent (`201`) but never arrives | the recipient's spam folder — free-address sender |
 | Invitation link opens localhost | `UI_BASE_URL` on Render still the dev value |
 | Deep link → Vercel 404 | the `/(.*)` → `/index.html` rewrite missing from `vercel.json` |

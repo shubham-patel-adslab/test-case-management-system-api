@@ -5,8 +5,20 @@ test suites and test executions, with role-based access. The React UI is a separ
 (`test-case-management-system-ui`).
 
 **Stack:** Node.js 24 · TypeScript (ESM) · Express 5 · PostgreSQL 17 (raw `pg`, `node-pg-migrate`) · zod
-(validation and OpenAPI) · JWT in an httpOnly cookie · `bcryptjs` · `nodemailer` (invitation emails) ·
-`multer` + `file-type` (attachments) · Vitest.
+(validation and OpenAPI) · Redis via `ioredis` (caching) · `express-rate-limit` · JWT in an httpOnly cookie ·
+`bcryptjs` · `helmet` · `nodemailer` (invitation emails) · `multer` + `file-type` (attachments) · Vitest.
+
+## Live demo
+
+| | URL |
+| --- | --- |
+| App (UI) | <https://tcms-self.vercel.app> |
+| API | <https://tcms-self.vercel.app/api> (the UI's host forwards `/api` to the API) |
+| Swagger | <https://tcms-self.vercel.app/api/docs> |
+
+Sign in with a demo account (one per role, see [Load the demo data](#9-load-the-demo-data-optional)); the
+password is shared with the submission. Free hosting: after 15 minutes idle the API sleeps, so the first request
+can take about a minute.
 
 ## Documentation
 
@@ -15,9 +27,6 @@ test suites and test executions, with role-based access. The React UI is a separ
 | Swagger UI at `/api/docs` (raw spec: `/api/docs.json`) | Every endpoint, request and response schema, status code |
 | [document/database-schema.md](document/database-schema.md) | Tables, columns, constraints, indexes, and why |
 | [document/user-guide.md](document/user-guide.md) | What each role (admin, test lead, tester, read-only) can do |
-| [document/api-requirements.md](document/api-requirements.md) | Backend requirements and every contract decision |
-| [document/deployment.md](document/deployment.md) | Putting the API and UI online on free tiers |
-| [document/prd.md](document/prd.md) | The original assignment |
 
 ## Status
 
@@ -167,7 +176,7 @@ npm test
 ```
 
 The tests are integration tests: they start the app and call it over HTTP, against the real database and
-Mailpit, so **PostgreSQL and Mailpit must be running**. They use the development database, and only touch
+Mailpit, so **PostgreSQL and Mailpit must be running** (and Redis, while `CACHE_ENABLED` is on). They use the development database, and only touch
 rows they create themselves (users with `@tcms-test.example` emails, projects named `[tcms-test] …`). They
 delete those rows afterwards and never truncate a table, so your own data is safe.
 
@@ -180,7 +189,7 @@ src/
   app/                  app-wide wiring: Express app, router, env, database, OpenAPI, mailer, file storage
   shared/               code shared across features: errors, request parsing, pagination
   features/<feature>/   one folder per feature: routes → controller → service → repository, mapper, DTOs
-  scripts/              command-line scripts (create-admin)
+  scripts/              command-line scripts (create-admin, seed-demo)
 test/                   integration tests, one file per feature
 document/               requirements, schema, user guide, deployment
 ```
