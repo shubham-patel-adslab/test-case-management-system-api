@@ -103,22 +103,25 @@ describe('POST /users', () => {
 });
 
 describe('GET /users', () => {
-    it('filters by search ("first last" or email) and status, newest first, paginated', async () => {
+    // Default order is by name ("first last", ignoring case) when the client sends no sort.
+    it('filters by search ("first last" or email) and status, by name by default, paginated; sort=createdAt:desc', async () => {
         const marker = testEmail('search').split('@')[0] ?? '';
-        const older = await request('POST', '/users', { token: admin.token, body: createBody({ lastName: marker, email: testEmail('older') }) });
-        const newer = await request('POST', '/users', { token: admin.token, body: createBody({ lastName: marker, email: testEmail('newer') }) });
+        const older = await request('POST', '/users', { token: admin.token, body: createBody({ firstName: 'ana', lastName: marker, email: testEmail('older') }) });
+        const newer = await request('POST', '/users', { token: admin.token, body: createBody({ firstName: 'Bea', lastName: marker, email: testEmail('newer') }) });
+        const olderId = expectBody(older, 201, userDetailsResponseSchema).id;
         const newerId = expectBody(newer, 201, userDetailsResponseSchema).id;
-        expectBody(older, 201, userDetailsResponseSchema);
+        const query = `search=${encodeURIComponent(marker)}&status=INVITED&pageSize=1`;
 
-        const page = expectBody(
-            await request('GET', `/users?search=${encodeURIComponent(`Ana ${marker}`)}&status=INVITED&pageSize=1`, { token: admin.token }),
-            200,
-            userPageResponseSchema,
-        );
-
+        const page = expectBody(await request('GET', `/users?${query}`, { token: admin.token }), 200, userPageResponseSchema);
         expect(page.totalItems).toBe(2);
         expect(page.totalPages).toBe(2);
-        expect(page.items[0]?.id).toBe(newerId);
+        expect(page.items[0]?.id).toBe(olderId);
+
+        const newest = expectBody(await request('GET', `/users?${query}&sort=createdAt:desc`, { token: admin.token }), 200, userPageResponseSchema);
+        expect(newest.items[0]?.id).toBe(newerId);
+
+        const byFullName = expectBody(await request('GET', `/users?search=${encodeURIComponent(`bea ${marker}`)}`, { token: admin.token }), 200, userPageResponseSchema);
+        expect(byFullName.items.map((user) => user.id)).toEqual([newerId]);
     });
 
     // In SQL, 'first' || ' ' || NULL is NULL: a user without a last name must still be found by first name.

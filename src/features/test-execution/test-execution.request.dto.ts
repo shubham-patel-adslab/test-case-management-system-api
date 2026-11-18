@@ -3,13 +3,17 @@ import { z } from 'zod';
 import { commaSeparatedSchema } from '../../shared/request/comma-separated.schema.js';
 import { idParamSchema, idSchema, uuidSchema } from '../../shared/request/id.schema.js';
 import { pageRequestSchema } from '../../shared/request/page.request.dto.js';
+import { sortSchema, type Sort } from '../../shared/request/sort.schema.js';
 import { TEST_CASE_STEPS_MAX } from '../test-case/test-case.constant.js';
 import { selectedTestCaseIdsSchema } from '../test-case/test-case.request.dto.js';
 import {
     EXECUTION_COMMENT_MAX_LENGTH,
+    EXECUTION_DEFAULT_SORT,
     EXECUTION_RESULTS,
+    EXECUTION_SORT_FIELDS,
     EXECUTION_STATUSES,
     EXECUTION_STEP_COMMENT_MAX_LENGTH,
+    type ExecutionSortField,
 } from './test-execution.constant.js';
 
 // A result for one step, by its 1-based `order` in the test case being run (the execution snapshots the
@@ -56,6 +60,7 @@ export const testExecutionPageRequestSchema = pageRequestSchema.extend({
     assigneeId: uuidSchema.optional(),
     testCaseId: idParamSchema.optional(),
     suiteRunId: idParamSchema.optional(),
+    sort: sortSchema(EXECUTION_SORT_FIELDS, EXECUTION_DEFAULT_SORT),
 });
 
 export const testExecutionProgressRequestSchema = z.object({
@@ -73,5 +78,6 @@ export const testExecutionIdParamsSchema = testExecutionProjectParamsSchema.exte
 export type TestExecutionResultRequestDto = z.infer<typeof testExecutionResultRequestSchema>;
 export type TestExecutionCreateRequestDto = z.infer<typeof testExecutionCreateRequestSchema>;
 export type TestExecutionAssignRequestDto = z.infer<typeof testExecutionAssignRequestSchema>;
+export type TestExecutionSort = Sort<ExecutionSortField>;
 export type TestExecutionPageRequestDto = z.infer<typeof testExecutionPageRequestSchema>;
 export type TestExecutionProgressRequestDto = z.infer<typeof testExecutionProgressRequestSchema>;

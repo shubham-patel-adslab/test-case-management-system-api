@@ -297,7 +297,7 @@ describe('Queue, history, progress', () => {
         const [first, second] = [await createCase(project.id, 'First'), await createCase(project.id, 'Second')];
         await assign(admin, project.id, [first.id, second.id], tester.id);
         await assign(admin, project.id, [first.id], other.id);
-        const [secondPending, firstPending] = await pendingIdsOf(project.id, tester.id);
+        const [firstPending, secondPending] = await pendingIdsOf(project.id, tester.id);
         await record(tester, project.id, firstPending ?? 0, { status: 'PASS' });
         await request('POST', executionsPath(project.id), { token: other.token, body: { testCaseId: first.id, status: 'FAIL' } });
 
@@ -328,5 +328,28 @@ describe('Queue, history, progress', () => {
         expect(await ids('lastResult=FAIL')).toEqual([failed.id]);
         expect(await ids('sort=lastExecutedAt:desc')).toEqual([failed.id, passed.id, never.id]);
         expect(await ids('sort=lastExecutedAt:asc')).toEqual([passed.id, failed.id, never.id]);
+    });
+
+    // The queue's default order is by test case title (like every list of named things); the UI can still ask
+    // for newest first (a history) or by run time, where pending executions (not run yet) come last.
+    it('lists executions by test case title by default; sort by createdAt or executedAt on request', async () => {
+        const tester = await createTestUser('TESTER');
+        const project = await createTestProject(admin, [tester.id]);
+        const [charlie, alpha, bravo] = [await createCase(project.id, 'charlie'), await createCase(project.id, 'Alpha'), await createCase(project.id, 'bravo')];
+        await assign(admin, project.id, [charlie.id], tester.id);
+        await request('POST', executionsPath(project.id), { token: tester.token, body: { testCaseId: alpha.id, status: 'PASS' } });
+        await request('POST', executionsPath(project.id), { token: tester.token, body: { testCaseId: bravo.id, status: 'FAIL' } });
+
+        const titles = async (query: string) =>
+            expectBody(await request('GET', `${executionsPath(project.id)}?${query}`, { token: tester.token }), 200, testExecutionPageResponseSchema)
+                .items.map((item) => item.testCaseTitle);
+
+        expect(await titles('')).toEqual(['Alpha', 'bravo', 'charlie']);
+        expect(await titles('sort=createdAt:desc')).toEqual(['bravo', 'Alpha', 'charlie']);
+        expect(await titles('sort=executedAt:desc')).toEqual(['bravo', 'Alpha', 'charlie']);
+        expect(await titles('sort=executedAt:asc')).toEqual(['Alpha', 'bravo', 'charlie']);
+
+        const invalid = await request('GET', `${executionsPath(project.id)}?sort=status:asc`, { token: tester.token });
+        expect(expectError(invalid, 400, 'VALIDATION_ERROR').details?.map((detail) => detail.field)).toEqual(['sort']);
     });
 });

@@ -20,7 +20,7 @@ openApiRegistry.registerPath({
     summary: 'List active roles (for assigning a role to a user)',
     description: 'Read-only: roles are managed by database migrations. Requires USER READ.',
     responses: {
-        200: { description: 'Active roles, in seed order', content: jsonContent(roleListResponseSchema) },
+        200: { description: 'Active roles, by name', content: jsonContent(roleListResponseSchema) },
         401: errorResponse('Missing, invalid or expired access-token cookie, or inactive account'),
         403: errorResponse('Missing permission USER READ (code FORBIDDEN)'),
     },

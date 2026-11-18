@@ -138,7 +138,7 @@ export const testExecutionService = {
         const offset = (request.page - 1) * request.pageSize;
 
         const [rows, totalItems] = await Promise.all([
-            testExecutionRepository.selectPage(projectId, filter, request.pageSize, offset),
+            testExecutionRepository.selectPage(projectId, filter, request.sort, request.pageSize, offset),
             testExecutionRepository.count(projectId, filter),
         ]);
 

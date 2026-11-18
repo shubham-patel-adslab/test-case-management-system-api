@@ -1,11 +1,13 @@
-import { pool, type Queryable } from '../../app/database.js';
+import { pool, toOrderBy, type Queryable } from '../../app/database.js';
 import type { DefectSeverity } from '../defect/defect.constant.js';
 import {
     EXECUTION_STATUS,
     type ExecutionAuditAction,
     type ExecutionResult,
+    type ExecutionSortField,
     type ExecutionStatus,
 } from './test-execution.constant.js';
+import type { TestExecutionSort } from './test-execution.request.dto.js';
 
 // An execution with the names of its assignee and executor, as `pg` returns it.
 export type TestExecutionRow = {
@@ -100,6 +102,14 @@ const EXECUTION_LIST_WHERE = `
        AND ($4::int IS NULL OR e.test_case_id = $4)
        AND ($5::int IS NULL OR e.suite_run_id = $5)`;
 
+// Fixed SQL per sort field. Title case-insensitively, like every name; a pending execution (never run) comes
+// last by executedAt in both directions.
+const SORT_EXPRESSIONS: Record<ExecutionSortField, string> = {
+    testCaseTitle: 'lower(e.test_case_title)',
+    createdAt: 'e.created_at',
+    executedAt: 'e.executed_at IS NULL, e.executed_at',
+};
+
 function toListParameters(projectId: number, filter: TestExecutionListFilter): unknown[] {
     return [projectId, filter.statuses ?? null, filter.assigneeId ?? null, filter.testCaseId ?? null, filter.suiteRunId ?? null];
 }
@@ -117,12 +127,11 @@ function firstRowOrThrow<TRow>(rows: TRow[], operation: string): TRow {
 // Every statement is scoped by project as well as the execution id. `db` defaults to the pool; pass the
 // transaction's client inside withTransaction().
 export const testExecutionRepository = {
-    // Newest first; `id` breaks ties so a page boundary never repeats or skips a row.
-    async selectPage(projectId: number, filter: TestExecutionListFilter, limit: number, offset: number): Promise<TestExecutionRow[]> {
+    async selectPage(projectId: number, filter: TestExecutionListFilter, sort: TestExecutionSort, limit: number, offset: number): Promise<TestExecutionRow[]> {
         const result = await pool.query<TestExecutionRow>(
             `${EXECUTION_SELECT}
              ${EXECUTION_LIST_WHERE}
-             ORDER BY e.created_at DESC, e.id DESC
+             ${toOrderBy(SORT_EXPRESSIONS, sort, 'e.id')}
              LIMIT $6 OFFSET $7`,
             [...toListParameters(projectId, filter), limit, offset],
         );

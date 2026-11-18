@@ -57,9 +57,10 @@ openApiRegistry.registerPath({
     method: 'get',
     path: BASE_PATH,
     tags: TAGS,
-    summary: 'Execution queue and history (paginated, newest first)',
+    summary: 'Execution queue and history (paginated, by test case title)',
     description: 'Filters combine with AND: `status` (comma-separated), `assigneeId` ("assigned to me"), `testCaseId` (a test '
-        + 'case\'s history), `suiteRunId`.',
+        + 'case\'s history), `suiteRunId`. Sorted by `sort`, default `testCaseTitle:asc`; a history reads best with '
+        + '`sort=createdAt:desc`.',
     request: { params: testExecutionProjectParamsSchema, query: testExecutionPageRequestSchema },
     responses: {
         200: { description: 'A page of executions', content: jsonContent(testExecutionPageResponseSchema) },

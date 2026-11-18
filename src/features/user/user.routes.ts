@@ -44,7 +44,7 @@ openApiRegistry.registerPath({
     method: 'get',
     path: '/users',
     tags: TAGS,
-    summary: 'List users (paginated, newest first)',
+    summary: 'List users (paginated, by name)',
     request: { query: userPageRequestSchema },
     responses: {
         200: { description: 'A page of users', content: jsonContent(userPageResponseSchema) },

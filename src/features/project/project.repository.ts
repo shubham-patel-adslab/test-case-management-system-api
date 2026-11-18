@@ -154,7 +154,7 @@ export const projectRepository = {
                JOIN user_roles ur ON ur.user_id = u.id
                JOIN roles_std r ON r.id = ur.role_id
               WHERE pm.project_id = ANY($1::int[])
-              ORDER BY u.first_name, u.last_name, u.email`,
+              ORDER BY lower(concat_ws(' ', u.first_name, u.last_name)), u.email`,
             [projectIds],
         );
 

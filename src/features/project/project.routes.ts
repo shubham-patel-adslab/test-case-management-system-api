@@ -51,7 +51,7 @@ openApiRegistry.registerPath({
     method: 'get',
     path: '/projects',
     tags: TAGS,
-    summary: 'List projects with their members (paginated, newest first)',
+    summary: 'List projects with their members (paginated, by name)',
     description: SCOPE_DESCRIPTION,
     request: { query: projectPageRequestSchema },
     responses: {
@@ -82,7 +82,7 @@ openApiRegistry.registerPath({
     path: '/projects/member-candidates',
     tags: TAGS,
     summary: 'Search users who can be added to a project team (member picker)',
-    description: 'Active and invited users, newest first. For the create and edit forms; non-admins can\'t call GET /users.',
+    description: 'Active and invited users, by name. For the create and edit forms; non-admins can\'t call GET /users.',
     request: { query: projectMemberCandidatePageRequestSchema },
     responses: {
         200: { description: 'A page of users', content: jsonContent(projectMemberCandidatePageResponseSchema) },
