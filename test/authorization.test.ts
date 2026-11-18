@@ -242,6 +242,7 @@ describe('GET /roles', () => {
     it('lists the four active roles by name', async () => {
         const roles = expectBody(await request('GET', '/roles', { token: admin.token }), 200, roleListResponseSchema);
 
-        expect(roles.map((role) => role.code)).toEqual(['ADMIN', 'READ_ONLY', 'TEST_LEAD', 'TESTER']);
+        // The database's locale collation ignores spaces at the first level, so "Tester" sorts before "Test lead".
+        expect(roles.map((role) => role.code)).toEqual(['ADMIN', 'READ_ONLY', 'TESTER', 'TEST_LEAD']);
     });
 });
