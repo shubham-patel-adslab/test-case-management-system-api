@@ -13,7 +13,8 @@
     "migrate:down": "npm run migrate -- down",
     "test": "vitest run",
     "test:watch": "vitest",
-    "admin:create": "tsx --env-file=.env src/scripts/create-admin.ts"
+    "admin:create": "tsx --env-file=.env src/scripts/create-admin.ts",
+    "seed:demo": "tsx --env-file=.env src/scripts/seed-demo/seed-demo.ts"
   },
   "keywords": [],
   "author": "",

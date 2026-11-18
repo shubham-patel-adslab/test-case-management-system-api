@@ -119,6 +119,25 @@ describe('POST /projects/:projectId/test-cases', () => {
         expect(fetched).toEqual(testCase);
     });
 
+    // Text is stored as written, HTML included: testers write XSS test cases, and the UI shows text, never HTML
+    // (React escapes it). Only invisible control characters are removed — PostgreSQL can't store a NUL byte at
+    // all, so it would otherwise be a 500. Tabs and line breaks stay.
+    it('stores HTML-looking text as written and strips control characters (a NUL byte is not a 500)', async () => {
+        const project = await createTestProject(admin);
+        const script = '<script>alert("xss")</script>';
+        const body = testCaseBody({
+            title: '\u0000 Name field\u0007 escapes HTML',
+            description: `Line 1\n\tLine 2\u001b[31m`,
+            steps: [{ action: `Enter ${script} as the name`, expectedResult: `The name shows ${script} as text` }],
+        });
+
+        const testCase = expectBody(await request('POST', casesPath(project.id), { token: admin.token, body }), 201, testCaseDetailsResponseSchema);
+
+        expect(testCase.title).toBe('Name field escapes HTML');
+        expect(testCase.description).toBe('Line 1\n\tLine 2[31m');
+        expect(testCase.steps[0]).toMatchObject({ action: `Enter ${script} as the name`, expectedResult: `The name shows ${script} as text` });
+    });
+
     // A rejected request must not leave a half-created test case behind, and the error must point at the
     // exact field the UI marks.
     it('rejects a missing step, a tag with a comma, or another project\'s suite with 400 on the field — nothing is created', async () => {
